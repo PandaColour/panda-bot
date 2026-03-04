@@ -3,6 +3,10 @@ import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from src.utils import get_logger
+
+logger = get_logger(__name__)
+
 
 class ConfigManager:
     """管理 config/ 目录下的所有配置文件"""
@@ -14,12 +18,15 @@ class ConfigManager:
     def _load_config(self, filename: str) -> Dict[str, Any]:
         """加载指定配置文件"""
         if filename in self._cache:
+            logger.debug(f"从缓存加载配置: {filename}")
             return self._cache[filename]
 
         config_path = self.config_dir / filename
         if not config_path.exists():
+            logger.error(f"配置文件不存在: {config_path}")
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
+        logger.debug(f"加载配置文件: {config_path}")
         with open(config_path, "r", encoding="utf-8") as f:
             config = json.load(f)
             self._cache[filename] = config

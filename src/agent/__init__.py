@@ -1,4 +1,4 @@
 from .agent import Agent
-from .context_builder import ContextBuilder
+from .context import ContextBuilder
 
 __all__ = ["Agent", "ContextBuilder"]

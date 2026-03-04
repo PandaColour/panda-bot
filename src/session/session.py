@@ -4,6 +4,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.utils import get_logger
+
+logger = get_logger(__name__)
+
 
 class Session:
     """管理对话历史和记忆"""
@@ -27,6 +31,8 @@ class Session:
         # 文件路径
         self.history_file = self.session_dir / "history.md"
         self.memory_file = self.session_dir / "memory.md"
+
+        logger.info(f"创建新会话: {self.session_dir}")
 
     @property
     def work_dir(self) -> Path:

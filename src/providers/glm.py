@@ -5,7 +5,10 @@ from typing import Any, Dict, List, Optional
 
 import requests
 
+from src.utils import get_logger
 from .base import BaseProvider
+
+logger = get_logger(__name__)
 
 
 class GLMProvider(BaseProvider):
@@ -42,6 +45,8 @@ Start your response with { and end with }"""
              temperature: Optional[float] = None,
              **kwargs) -> Dict[str, Any]:
         """调用智谱 API"""
+        logger.debug(f"调用 LLM API, 消息数: {len(messages)}")
+
         headers = {
             "x-api-key": self.api_key,
             "anthropic-version": "2023-06-01",
@@ -56,17 +61,24 @@ Start your response with { and end with }"""
             payload["temperature"] = self.temperature
 
         payload.update(kwargs)
-        response = requests.post(
-            url=f"{self.base_url}/v1/messages",
-            headers=headers,
-            json=payload
-        )
 
-        response.raise_for_status()
-        result = response.json()
+        try:
+            response = requests.post(
+                url=f"{self.base_url}/v1/messages",
+                headers=headers,
+                json=payload
+            )
+            response.raise_for_status()
+            result = response.json()
+            logger.debug("LLM API 调用成功")
+        except requests.RequestException as e:
+            logger.error(f"LLM API 调用失败: {str(e)}")
+            raise
 
         # 提取文本内容 (智谱 API 响应格式)
         text = result["content"][0]["text"].strip()
+        logger.debug(f"LLM 响应长度: {len(text)}")
+
         # 解析 JSON 响应
         return self._parse_response(text)
 
