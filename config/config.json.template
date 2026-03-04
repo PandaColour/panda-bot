@@ -1,0 +1,10 @@
+{
+  "llm": {
+    "provider": "zhipu",
+    "base_url": "https://open.bigmodel.cn/api/anthropic",
+    "api_key": "your-zhipu-apikey",
+    "model": "glm-5",
+    "max_tokens": 131072,
+    "temperature": 0
+  }
+}
