@@ -3,21 +3,10 @@ import platform
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from src.agent.session import Session
 from src.config import ConfigManager
-from src.session import Session
-
 
 class ContextBuilder:
-    """
-    构建 LLM 调用所需的上下文
-
-    职责:
-    1. 加载和管理系统提示词
-    2. 构建消息历史
-    3. 控制上下文长度
-    """
-
-    # 模板文件路径
     TEMPLATE_DIR = Path(__file__).parent.parent / "template"
     DEFAULT_PROMPT_FILE = "AGENTS.md"
     SYSTEM_ROLE = "assistant"
@@ -28,28 +17,16 @@ class ContextBuilder:
         self._system_prompt_cache: Optional[str] = None
 
     def build(self, session: Session) -> List[Dict[str, str]]:
-        """
-        构建完整的消息上下文
-
-        Args:
-            session: 会话对象
-
-        Returns:
-            构建好的消息列表，可直接传给 LLM
-        """
-        messages = []
-
+        chat_messages = []
         # 1. 添加系统提示词
         system_prompt = self._get_system_prompt()
-        messages.append({"role": self.SYSTEM_ROLE, "content": system_prompt})
+        chat_messages.append({"role": self.SYSTEM_ROLE, "content": system_prompt})
 
-        # 2. 添加对话历史 (session 中已维护所有历史)
-        messages.extend(session.get_messages())
+        # 2. 添加工具
 
-        # 3. 控制上下文长度
-        messages = self._truncate_messages(messages)
 
-        return messages
+
+        return chat_messages
 
     def _get_system_prompt(self) -> str:
         """获取系统提示词 (优先从配置读取，其次从文件加载)"""
@@ -68,6 +45,19 @@ class ContextBuilder:
         os_info = self._get_os_info()
         self._system_prompt_cache = f"{base_prompt}\n\n## 运行环境\n\n{os_info}"
         return self._system_prompt_cache
+
+    def _get_tools(self) -> List[Dict[str, Any]]:
+        """获取工具列表"""
+        TOOLS = [{
+            "name": "bash",
+            "description": "Run a shell command.",
+            "input_schema": {
+                "type": "object",
+                "properties": {"command": {"type": "string"}},
+                "required": ["command"],
+            },
+        }]
+        return TOOLS
 
     def _get_os_info(self) -> str:
         """获取操作系统信息"""

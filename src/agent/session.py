@@ -14,6 +14,8 @@ class Session:
 
     # 默认工作目录: 项目根目录/workspace
     DEFAULT_WORKSPACE = Path(__file__).parent.parent.parent / "workspace"
+    USER = "user"
+    ASSISTANT = "assistant"
 
     def __init__(self, workspace: Optional[Path] = None):
         self.messages: List[Dict[str, str]] = []
@@ -46,7 +48,7 @@ class Session:
 
     def add_agent_response(self, content: str) -> None:
         """添加 Agent 响应"""
-        self.messages.append({"role": "assistant", "content": content})
+        self.messages.append({"role": self.ASSISTANT, "content": content})
         self._save_history()
 
     def add_message(self, role: str, content: str) -> None:
@@ -57,7 +59,7 @@ class Session:
     def add_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
         """添加工具执行结果"""
         self.messages.append({
-            "role": "user",  # GLM 使用 user 角色传递工具结果
+            "role": self.USER,  # GLM 使用 user 角色传递工具结果
             "content": f"Tool [{tool_name}] result:\n{json.dumps(result, ensure_ascii=False, indent=2)}"
         })
         self._save_history()
@@ -65,7 +67,7 @@ class Session:
     def add_error(self, error_msg: str) -> None:
         """添加错误信息"""
         self.messages.append({
-            "role": "user",
+            "role": self.USER,
             "content": f"Error: {error_msg}"
         })
         self._save_history()

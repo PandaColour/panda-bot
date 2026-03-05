@@ -1,5 +1,6 @@
 """配置管理模块"""
 import json
+from enum import global_enum
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -83,3 +84,7 @@ class ConfigManager:
             self._cache.pop(filename, None)
         else:
             self._cache.clear()
+
+
+
+globe_config_manager = ConfigManager()
