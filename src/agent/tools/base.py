@@ -94,6 +94,7 @@ class Tool(ABC):
         """Convert tool to OpenAI function schema format."""
         return {
             "type": "function",
+            "name": self.name,
             "function": {
                 "name": self.name,
                 "description": self.description,

@@ -24,7 +24,7 @@ class ContextBuilder:
 
         # 2. 添加历史消息
         history_message = session.get_messages()
-        chat_messages.append(history_message)
+        chat_messages.extend(history_message)
         return chat_messages
 
     def _get_system_prompt(self) -> str:

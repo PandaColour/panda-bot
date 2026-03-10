@@ -7,6 +7,7 @@ from src.utils import get_logger
 
 from .context import ContextBuilder
 from .session import Session
+from .tools.shell import ExecTool
 from ..config.config_manager import globe_config_manager
 
 # 模块 logger
@@ -50,16 +51,23 @@ class AgentLoop:
         self.retry_count = 0
         logger.info("Agent 开始执行任务")
 
+        exec_tool = ExecTool()
+        TOOLS = [
+            exec_tool.to_schema()
+        ]
+
+        loop_result = ""
         while self.step_count < self.MAX_STEPS:
             self.step_count += 1
             self.state = AgentState.THINKING
             logger.debug(f"Step {self.step_count}: 状态={self.state}")
 
             # 构建上下文并调用 LLM
+            response = None
             try:
                 context_messages = self.context_builder.build(session)
                 logger.debug(f"构建上下文完成，消息数: {len(context_messages)}")
-                response = self.provider.chat(context_messages)
+                response = self.provider.chat(context_messages, TOOLS)
                 logger.debug(f"LLM 响应: {response}")
             except Exception as e:
                 logger.error(f"LLM 调用失败: {str(e)}")
@@ -69,59 +77,24 @@ class AgentLoop:
                     return "LLM 调用失败次数过多，任务终止。"
                 continue
 
-
-
-
-            # 处理响应
-            response_type = response.get("type")
-
-            if response_type == "final":
-                self.state = "DONE"
-                logger.info(f"任务完成，步数: {self.step_count}")
-                return response.get("content", "任务完成")
-
-            elif response_type == "think":
-                # 思考阶段，添加到历史继续
-                logger.debug("思考阶段，继续...")
-                self.session.add_message("assistant", response.get("content", ""))
+            tool_calls = []
+            for e in response.get("content"):
+                if e.get("type") == "tool_use":
+                    self.state = AgentState.ACTING
+                    tool_calls.append(e)
+                    tool_result = exec_tool.execute(e.get("name"), e.get("input"))
+                    session.add_tool_result(e.get("name"), tool_result)
+                    logger.debug(f"工具执行结果: {tool_result}")
+            if len(tool_calls) > 0:
                 continue
-
-            elif response_type == "tool":
-                self.state = AgentState.ACTING
-                tool_name = response.get("tool")
-                tool_input = response.get("input", "")
-                logger.info(f"执行工具: {tool_name}, 输入: {tool_input}...")
-
-                # 验证工具
-                if tool_name not in TOOLS:
-                    logger.warning(f"未知工具: {tool_name}")
-                    self.session.add_error(f"Unknown tool: {tool_name}")
-                    continue
-
-                # 执行工具
-                try:
-                    result = TOOLS[tool_name](tool_input)
-                    logger.debug(f"工具执行结果: code={result.get('code')}")
-                except Exception as e:
-                    logger.error(f"工具执行异常: {str(e)}")
-                    result = {"stdout": "", "stderr": str(e), "code": -1}
-
-                # 验证结果
-                self.state = "VALIDATE"
-                if self._validate_result(result):
-                    self.retry_count = 0
-                else:
-                    self.retry_count += 1
-                    logger.warning(f"工具执行失败，重试次数: {self.retry_count}")
-                    if self.retry_count > self.MAX_RETRY:
-                        logger.error("工具执行重试次数超限")
-                        return "工具执行失败次数过多，任务终止。"
             else:
-                logger.warning(f"未知响应类型: {response_type}")
-
-        self.state = "ERROR"
-        logger.error(f"超过最大步数限制: {self.MAX_STEPS}")
-        return "超过最大步数限制，任务终止。"
+                self.state = AgentState.DONE
+                for e in response:
+                    if e.get("type") == "text":
+                        loop_result = e.get("text")
+                        session.add_agent_response(loop_result)
+                break
+        return loop_result
 
     def _validate_result(self, result: Dict) -> bool:
         """验证工具执行结果"""

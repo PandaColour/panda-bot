@@ -4,10 +4,10 @@ import re
 from typing import Any, Dict, List, Optional
 
 import requests
+from zai import ZhipuAiClient
 
 from src.utils import get_logger
 from .base_provider import BaseProvider
-from ..config.config_manager import globe_config_manager
 
 logger = get_logger(__name__)
 
@@ -21,12 +21,13 @@ class GLMProvider(BaseProvider):
         self.model = self.config.get("llm.model", "glm-5")
         self.temperature = self.config.get("llm.temperature", 0.7)
         self.max_tokens = self.config.get("llm.max_tokens", 102400)
+        self.client = ZhipuAiClient(api_key=self.api_key)
 
     def chat(self,
              messages: List[Dict[str, str]],
              tools: Optional[List[Dict[str, Any]]] = None,
              temperature: Optional[float] = None,
-             **kwargs) -> str:
+             **kwargs) -> List[Dict[str, Any]]:
         """调用智谱 API"""
         logger.debug(f"调用 LLM API, 消息数: {len(messages)}")
 
@@ -51,20 +52,37 @@ class GLMProvider(BaseProvider):
 
         payload.update(kwargs)
 
-        try:
-            response = requests.post(
-                url=f"{self.base_url}/v1/messages",
-                headers=headers,
-                json=payload
-            )
-            response.raise_for_status()
-            result = response.json()
-            logger.debug("LLM API 调用成功")
-        except requests.RequestException as e:
-            logger.error(f"LLM API 调用失败: {str(e)}")
-            raise
 
-        # 提取文本内容 (智谱 API 响应格式)
-        text = result["content"][0]["text"].strip()
-        logger.debug(f"LLM 响应长度: {len(text)}")
-        return text
+
+
+
+        response = None
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=self.temperature
+            )
+
+            # response = requests.post(
+            #     url=f"{self.base_url}/v1/messages",
+            #     headers=headers,
+            #     json=payload
+            # )
+            # response.raise_for_status()
+            logger.debug("LLM API 调用成功")
+
+            #result = response.json()
+            result = json.loads(response.choices[0].message.content)
+        except requests.HTTPError as e:
+            logger.error(f"LLM API HTTPError: {str(e)}  response.status_code: {str(response.status_code)}")
+            raise
+        except requests.RequestException as e:
+            logger.error(f"LLM API RequestException: {str(e)}")
+            raise
+        except json.JSONDecodeError as e:
+            logger.error(f"LLM API 返回结果解析失败: {str(e)}")
+            raise
+        return result
