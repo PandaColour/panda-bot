@@ -3,7 +3,6 @@ from enum import Enum
 from typing import Dict, Optional, List
 
 from src.models import GLMProvider
-from src.agent.tools import TOOLS
 from src.utils import get_logger
 
 from .context import ContextBuilder
@@ -34,7 +33,7 @@ class AgentLoop:
         self.config = globe_config_manager
 
         # 初始化组件
-        self.provider = GLMProvider(self.config.get_llm_config())
+        self.provider = GLMProvider()
         self.context_builder = ContextBuilder(self.config)
 
         # 状态
@@ -61,7 +60,7 @@ class AgentLoop:
                 context_messages = self.context_builder.build(session)
                 logger.debug(f"构建上下文完成，消息数: {len(context_messages)}")
                 response = self.provider.chat(context_messages)
-                logger.debug(f"LLM 响应类型: {response.get('type')}")
+                logger.debug(f"LLM 响应: {response}")
             except Exception as e:
                 logger.error(f"LLM 调用失败: {str(e)}")
                 self.retry_count += 1
@@ -69,6 +68,9 @@ class AgentLoop:
                     logger.error("LLM 调用重试次数超限")
                     return "LLM 调用失败次数过多，任务终止。"
                 continue
+
+
+
 
             # 处理响应
             response_type = response.get("type")

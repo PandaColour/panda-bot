@@ -85,6 +85,4 @@ class ConfigManager:
         else:
             self._cache.clear()
 
-
-
 globe_config_manager = ConfigManager()

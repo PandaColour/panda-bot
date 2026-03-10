@@ -1,6 +1,6 @@
 """模型提供商基类"""
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from src.config.config_manager import globe_config_manager
 
@@ -12,6 +12,10 @@ class BaseProvider(ABC):
         self.config = globe_config_manager
 
     @abstractmethod
-    def chat(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+    def chat(self,
+             messages: List[Dict[str, str]],
+             tools: Optional[List[Dict[str, Any]]] = None,
+             temperature: Optional[float] = None,
+             **kwargs) -> str:
         """调用模型 API"""
         pass

@@ -7,7 +7,7 @@ from src.agent.session import Session
 from src.config import ConfigManager
 
 class ContextBuilder:
-    TEMPLATE_DIR = Path(__file__).parent.parent / "template"
+    TEMPLATE_DIR = Path(__file__).parent / "prompts"
     DEFAULT_PROMPT_FILE = "AGENTS.md"
     SYSTEM_ROLE = "assistant"
 
@@ -22,10 +22,9 @@ class ContextBuilder:
         system_prompt = self._get_system_prompt()
         chat_messages.append({"role": self.SYSTEM_ROLE, "content": system_prompt})
 
-        # 2. 添加工具
-
-
-
+        # 2. 添加历史消息
+        history_message = session.get_messages()
+        chat_messages.append(history_message)
         return chat_messages
 
     def _get_system_prompt(self) -> str:
@@ -60,10 +59,8 @@ class ContextBuilder:
         return TOOLS
 
     def _get_os_info(self) -> str:
-        """获取操作系统信息"""
         system = platform.system()
         release = platform.release()
-        version = platform.version()
 
         if system == "Windows":
             return f"- 操作系统: Windows {release}"

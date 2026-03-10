@@ -6,27 +6,25 @@ from typing import Any, Dict, List, Optional
 import requests
 
 from src.utils import get_logger
-from .base import BaseProvider
+from .base_provider import BaseProvider
+from ..config.config_manager import globe_config_manager
 
 logger = get_logger(__name__)
 
 
 class GLMProvider(BaseProvider):
     """智谱 GLM-5 模型提供商"""
-
-    # 错误提醒模板
-    JSON_ERROR_REMINDER = """"""
-
-    def __init__(self, config: Dict[str, Any]):
-        super().__init__(config)
-        self.base_url = self.config.get("base_url")
-        self.api_key = self.config.get("api_key", "")
-        self.model = self.config.get("model", "glm-5")
-        self.temperature = self.config.get("temperature", 0.7)
-        self.max_tokens = self.config.get("max_tokens", 102400)
+    def __init__(self, ):
+        super().__init__()
+        self.base_url = self.config.get("llm.base_url")
+        self.api_key = self.config.get("llm.api_key", "")
+        self.model = self.config.get("llm.model", "glm-5")
+        self.temperature = self.config.get("llm.temperature", 0.7)
+        self.max_tokens = self.config.get("llm.max_tokens", 102400)
 
     def chat(self,
              messages: List[Dict[str, str]],
+             tools: Optional[List[Dict[str, Any]]] = None,
              temperature: Optional[float] = None,
              **kwargs) -> str:
         """调用智谱 API"""
@@ -38,7 +36,13 @@ class GLMProvider(BaseProvider):
             "Content-Type": "application/json",
         }
 
-        payload = {"model": self.model, "max_tokens": self.max_tokens, "stream": "false", "messages": messages}
+        payload = {"model": self.model,
+                   "max_tokens": self.max_tokens,
+                   "stream": "false",
+                   "messages": messages}
+
+        if tools is not None:
+            payload["tools"] = tools
 
         if temperature is not None:
             payload["temperature"] = temperature
