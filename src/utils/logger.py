@@ -43,7 +43,7 @@ DEFAULT_CONFIG = {
     "max_bytes": 500 * 1024 * 1024,  # 500MB
     "backup_count": 10,
     "queue_size": 10000,
-    "console_output": True,  # False 关闭控制台输出
+    "console_output": False,  # False 关闭控制台输出
     "file_output": True,
     "rotation": "size",  # "size" 或 "time"
     "when": "midnight",

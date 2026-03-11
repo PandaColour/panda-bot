@@ -1,4 +1,5 @@
 """智能体核心 - 控制层"""
+import asyncio
 from enum import Enum
 from typing import Dict, Optional, List
 
@@ -44,8 +45,8 @@ class AgentLoop:
 
         logger.debug("Agent 初始化完成")
 
-    def runloop(self, session: Session) -> str:
-        """执行智能体主循环"""
+    async def runloop(self, session: Session):
+        """执行智能体主循环（异步生成器，实时输出）"""
         self.state = AgentState.INIT
         self.step_count = 0
         self.retry_count = 0
@@ -61,38 +62,35 @@ class AgentLoop:
             self.state = AgentState.THINKING
             logger.debug(f"Step {self.step_count}: 状态={self.state}")
 
-            # 构建上下文并调用 LLM
+            # 构建上下文并调用 LLM (在线程池中运行同步调用)
             try:
                 context_messages = self.context_builder.build(session)
                 logger.debug(f"构建上下文完成，消息数: {len(context_messages)}")
-                response = self.provider.chat(context_messages, TOOLS)
+                response = await asyncio.to_thread(self.provider.chat, context_messages, TOOLS)
                 logger.debug(f"LLM 响应: {response}")
             except Exception as e:
                 logger.error(f"LLM 调用失败: {str(e)}")
                 self.retry_count += 1
                 if self.retry_count > self.MAX_RETRY:
                     logger.error("LLM 调用重试次数超限")
-                    return "LLM 调用失败次数过多，任务终止。"
+                    return
                 continue
 
             if response.content is not None:
-                session.add_agent_response(response.content)
+                await session.add_agent_response(response.content)
 
             if response.finish_reason == "stop":
                 self.state = AgentState.DONE
-                session.add_agent_response("任务完成。")
-                break
+                return
 
             # 执行工具
             if response.has_tool_calls:
                 self.state = AgentState.ACTING
                 for tool_call in response.tool_calls:
-                    logger.debug(f"执行工具: {tool_call.arguments['command']}")
-                    tool_result = exec_tool.execute(tool_call.arguments['command'])
-                    session.add_tool_result(tool_call.id, tool_result)
-
-        loop_result = "任务完成"
-        return loop_result
+                    command = tool_call.arguments['command']
+                    logger.debug(f"执行工具: {command}")
+                    tool_result = exec_tool.execute(command)
+                    await session.add_tool_result(tool_call.id, tool_result)
 
     def get_status(self) -> Dict:
         """获取当前状态"""

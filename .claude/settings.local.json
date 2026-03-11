@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(python:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(ls -la D:/github/panda-bot/*.py 2>/dev/null || dir /b \"D:\\\\github\\\\panda-bot\\\\*.py\" 2>nul)"
     ]
   }
 }
