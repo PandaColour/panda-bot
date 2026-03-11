@@ -1,8 +1,8 @@
 """Shell execution tool."""
 
-import asyncio
 import os
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -63,62 +63,50 @@ class ExecTool(Tool):
             "required": ["command"]
         }
     
-    async def execute(self, command: str, working_dir: str | None = None, **kwargs: Any) -> str:
+    def execute(self, command: str, working_dir: str | None = None, **kwargs: Any) -> str:
         cwd = working_dir or self.working_dir or os.getcwd()
         guard_error = self._guard_command(command, cwd)
         if guard_error:
             return guard_error
-        
+
         env = os.environ.copy()
         if self.path_append:
             env["PATH"] = env.get("PATH", "") + os.pathsep + self.path_append
 
         try:
-            process = await asyncio.create_subprocess_shell(
+            result = subprocess.run(
                 command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+                shell=True,
+                capture_output=True,
                 cwd=cwd,
                 env=env,
+                timeout=self.timeout,
             )
-            
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=self.timeout
-                )
-            except asyncio.TimeoutError:
-                process.kill()
-                # Wait for the process to fully terminate so pipes are
-                # drained and file descriptors are released.
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    pass
-                return f"Error: Command timed out after {self.timeout} seconds"
-            
+
             output_parts = []
-            
-            if stdout:
-                output_parts.append(stdout.decode("utf-8", errors="replace"))
-            
-            if stderr:
-                stderr_text = stderr.decode("utf-8", errors="replace")
+
+            if result.stdout:
+                output_parts.append(result.stdout.decode("utf-8", errors="replace"))
+
+            if result.stderr:
+                stderr_text = result.stderr.decode("utf-8", errors="replace")
                 if stderr_text.strip():
                     output_parts.append(f"STDERR:\n{stderr_text}")
-            
-            if process.returncode != 0:
-                output_parts.append(f"\nExit code: {process.returncode}")
-            
-            result = "\n".join(output_parts) if output_parts else "(no output)"
-            
+
+            if result.returncode != 0:
+                output_parts.append(f"\nExit code: {result.returncode}")
+
+            output = "\n".join(output_parts) if output_parts else "(no output)"
+
             # Truncate very long output
             max_len = 10000
-            if len(result) > max_len:
-                result = result[:max_len] + f"\n... (truncated, {len(result) - max_len} more chars)"
-            
-            return result
-            
+            if len(output) > max_len:
+                output = output[:max_len] + f"\n... (truncated, {len(output) - max_len} more chars)"
+
+            return output
+
+        except subprocess.TimeoutExpired:
+            return f"Error: Command timed out after {self.timeout} seconds"
         except Exception as e:
             return f"Error executing command: {str(e)}"
 

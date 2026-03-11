@@ -56,14 +56,12 @@ class AgentLoop:
             exec_tool.to_schema()
         ]
 
-        loop_result = ""
         while self.step_count < self.MAX_STEPS:
             self.step_count += 1
             self.state = AgentState.THINKING
             logger.debug(f"Step {self.step_count}: 状态={self.state}")
 
             # 构建上下文并调用 LLM
-            response = None
             try:
                 context_messages = self.context_builder.build(session)
                 logger.debug(f"构建上下文完成，消息数: {len(context_messages)}")
@@ -77,29 +75,24 @@ class AgentLoop:
                     return "LLM 调用失败次数过多，任务终止。"
                 continue
 
-            tool_calls = []
-            for e in response.get("content"):
-                if e.get("type") == "tool_use":
-                    self.state = AgentState.ACTING
-                    tool_calls.append(e)
-                    tool_result = exec_tool.execute(e.get("name"), e.get("input"))
-                    session.add_tool_result(e.get("name"), tool_result)
-                    logger.debug(f"工具执行结果: {tool_result}")
-            if len(tool_calls) > 0:
-                continue
-            else:
-                self.state = AgentState.DONE
-                for e in response:
-                    if e.get("type") == "text":
-                        loop_result = e.get("text")
-                        session.add_agent_response(loop_result)
-                break
-        return loop_result
+            if response.content is not None:
+                session.add_agent_response(response.content)
 
-    def _validate_result(self, result: Dict) -> bool:
-        """验证工具执行结果"""
-        # 硬规则: exit code 为 0 表示成功
-        return result.get("code", -1) == 0
+            if response.finish_reason == "stop":
+                self.state = AgentState.DONE
+                session.add_agent_response("任务完成。")
+                break
+
+            # 执行工具
+            if response.has_tool_calls:
+                self.state = AgentState.ACTING
+                for tool_call in response.tool_calls:
+                    logger.debug(f"执行工具: {tool_call.arguments['command']}")
+                    tool_result = exec_tool.execute(tool_call.arguments['command'])
+                    session.add_tool_result(tool_call.id, tool_result)
+
+        loop_result = "任务完成"
+        return loop_result
 
     def get_status(self) -> Dict:
         """获取当前状态"""
