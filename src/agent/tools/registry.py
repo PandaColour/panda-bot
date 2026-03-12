@@ -56,7 +56,7 @@ class ToolRegistry:
     
     @property
     def tool_names(self) -> list[str]:
-        """Get list of registered tool names."""
+        """Get a list of registered tool names."""
         return list(self._tools.keys())
     
     def __len__(self) -> int:

@@ -6,6 +6,7 @@ Panda Bot - 通用智能体
 import asyncio
 import json
 import sys
+import threading
 from typing import Optional
 
 # Windows 控制台 UTF-8 编码支持
@@ -19,61 +20,115 @@ from src.utils import get_logger, setup_logging
 
 logger = get_logger(__name__)
 
+
 class InputListener:
-    """独立协程：持续监听用户输入"""
+    """独立线程：持续监听用户输入
+
+    注意：使用 threading.Thread 而不是 asyncio.to_thread，
+    因为在 Windows 上 to_thread(input) 和 asyncio 子进程存在冲突。
+
+    支持 pause/resume，在执行命令时完全停止线程避免死锁。
+    """
 
     def __init__(self):
-        self._input_queue: asyncio.Queue = asyncio.Queue()
+        self._queue: asyncio.Queue = asyncio.Queue()
+        self._running = True
+        self._thread: Optional[threading.Thread] = None
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
-    async def start(self):
-        """启动监听协程"""
-        asyncio.create_task(self._listen_loop())
+    def start(self):
+        """启动监听线程"""
+        self._loop = asyncio.get_running_loop()
+        self._running = True
+        self._thread = threading.Thread(target=self._listen_loop, daemon=True)
+        self._thread.start()
 
-    async def _listen_loop(self):
-        """监听循环：持续读取用户输入并放入队列"""
-        while True:
+    def pause(self):
+        """暂停输入监听（执行命令前调用）
+
+        在 Windows 上，input() 无法被中断，所以需要完全停止线程。
+        """
+        self._running = False  # 让线程退出
+
+    def resume(self):
+        """恢复输入监听（执行命令后调用）"""
+        self._loop = asyncio.get_running_loop()
+        self._running = True
+        self._thread = threading.Thread(target=self._listen_loop, daemon=True)
+        self._thread.start()
+
+    def _listen_loop(self):
+        """监听循环（在独立线程中运行）"""
+        while self._running:
             try:
-                # 使用 asyncio.to_thread 在线程中执行阻塞的 input
-                user_input = await asyncio.to_thread(input, "You: ")
+                user_input = input("You: ")
                 if user_input.strip():
-                    await self._input_queue.put(user_input.strip())
-                    logger.debug(f"用户输入已入队: {user_input.strip()[:50]}...")
+                    if self._loop and not self._loop.is_closed():
+                        self._loop.call_soon_threadsafe(
+                            lambda: self._queue.put_nowait(user_input.strip())
+                        )
             except EOFError:
-                # 处理 Ctrl+D
                 logger.info("检测到 EOF，停止监听")
-                await self._input_queue.put("exit")
                 break
             except KeyboardInterrupt:
-                # 处理 Ctrl+C
                 logger.info("检测到中断信号，停止监听")
-                await self._input_queue.put("exit")
                 break
 
     async def get_input(self) -> Optional[str]:
-        """阻塞等待用户输入"""
+        """从队列获取用户输入"""
         try:
-            return await self._input_queue.get()
+            return await self._queue.get()
         except Exception:
             return None
 
     def get_input_nowait(self) -> Optional[str]:
-        """非阻塞获取用户输入，没有则返回 None"""
+        """非阻塞获取用户输入"""
         try:
-            return self._input_queue.get_nowait()
+            return self._queue.get_nowait()
         except asyncio.QueueEmpty:
             return None
 
+    def stop(self):
+        """停止监听"""
+        self._running = False
+
+
+# 全局 InputListener 实例，供 shell 工具使用
+_input_listener: Optional[InputListener] = None
+
+
+def get_input_listener() -> Optional[InputListener]:
+    """获取全局 InputListener 实例"""
+    return _input_listener
+
+
+def set_input_listener(listener: InputListener):
+    """设置全局 InputListener 实例"""
+    global _input_listener
+    _input_listener = listener
+
+
 async def run_main_loop():
-    listener = InputListener()
-    await listener.start()
+    """
+    主循环：简单的阻塞式输入 + Agent 执行
+
+    在 Windows 上，input() 和 subprocess 无法真正并发（控制台 stdin 冲突）。
+    所以采用简单的顺序执行模式：输入 → 执行 → 输入 → 执行...
+    """
     main_session = Session()
+
     while True:
-        # 等待用户输入
-        user_input = await listener.get_input()
-        if user_input is None:
-            await asyncio.sleep(0.5)
+        # 阻塞等待用户输入
+        try:
+            user_input = input("You: ")
+        except (EOFError, KeyboardInterrupt):
             break
-        await main_session.add_user_input(user_input)
+
+        if not user_input.strip():
+            continue
+
+        await main_session.add_user_input(user_input.strip())
+
         # 创建 Agent 任务
         agent_loop = AgentLoop()
         await agent_loop.runloop(main_session)

@@ -8,6 +8,8 @@ from src.utils import get_logger
 
 from .context import ContextBuilder
 from .session import Session
+from .tools import ToolRegistry
+from .tools.filesystem import *
 from .tools.shell import ExecTool
 from ..config.config_manager import globe_config_manager
 
@@ -52,10 +54,13 @@ class AgentLoop:
         self.retry_count = 0
         logger.info("Agent 开始执行任务")
 
-        exec_tool = ExecTool()
-        TOOLS = [
-            exec_tool.to_schema()
-        ]
+
+        tool_registry = ToolRegistry()
+        tool_registry.register(ExecTool())
+        tool_registry.register(ReadFileTool())
+        tool_registry.register(WriteFileTool())
+        tool_registry.register(EditFileTool())
+        tool_registry.register(ListDirTool())
 
         while self.step_count < self.MAX_STEPS:
             self.step_count += 1
@@ -66,7 +71,7 @@ class AgentLoop:
             try:
                 context_messages = self.context_builder.build(session)
                 logger.debug(f"构建上下文完成，消息数: {len(context_messages)}")
-                response = await asyncio.to_thread(self.provider.chat, context_messages, TOOLS)
+                response = await asyncio.to_thread(self.provider.chat, context_messages, tool_registry.get_definitions())
                 logger.debug(f"LLM 响应: {response}")
             except Exception as e:
                 logger.error(f"LLM 调用失败: {str(e)}")
@@ -87,10 +92,10 @@ class AgentLoop:
             if response.has_tool_calls:
                 self.state = AgentState.ACTING
                 for tool_call in response.tool_calls:
-                    command = tool_call.arguments['command']
-                    logger.debug(f"执行工具: {command}")
-                    tool_result = exec_tool.execute(command)
+                    print(f"{tool_call.name} {tool_call.arguments}")
+                    tool_result = await tool_registry.execute(tool_call.name, tool_call.arguments)
                     await session.add_tool_result(tool_call.id, tool_result)
+
 
     def get_status(self) -> Dict:
         """获取当前状态"""
