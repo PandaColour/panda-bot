@@ -6,24 +6,12 @@ import re
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any
 
 from .base import Tool
 
-if TYPE_CHECKING:
-    from src.main import InputListener
-
-# 独立的线程池，避免与 InputListener 等其他 to_thread 调用竞争
+# 独立的线程池，用于执行 subprocess
 _shell_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="shell_")
-
-
-def _get_input_listener() -> "InputListener | None":
-    """获取全局 InputListener 实例（延迟导入避免循环依赖）"""
-    try:
-        from src.main import get_input_listener
-        return get_input_listener()
-    except ImportError:
-        return None
 
 
 class ExecTool(Tool):
@@ -93,43 +81,26 @@ class ExecTool(Tool):
         if self.path_append:
             env["PATH"] = env.get("PATH", "") + os.pathsep + self.path_append
 
-        listener = _get_input_listener()
         try:
-            # 暂停 InputListener，避免 Windows 控制台 stdin 死锁
-            if listener:
-                listener.pause()
-
             # 使用 subprocess.run() 在独立线程池中执行
-            # 避免与 InputListener 的 input() 产生 Windows 控制台冲突
-            print(f"[DEBUG] 开始执行命令: {command[:100]}...")
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                _shell_executor,
-                lambda: subprocess.run(
-                    command,
-                    shell=True,
-                    capture_output=True,
-                    cwd=cwd,
-                    env=env,
-                    timeout=self.timeout,
-                )
+            # aioconsole 处理输入，不会产生冲突
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            print(f"[DEBUG] 命令执行完成, returncode={result.returncode}")
+
+            stdout, stderr = await proc.communicate()
 
             output_parts = []
 
-            if result.stdout:
-                print(f"[DEBUG] stdout 大小: {len(result.stdout)} bytes")
-                stdout_text = result.stdout.decode(errors="replace")
-                print(f"[DEBUG] 解码完成")
+            if stdout:
+                stdout_text = stdout.decode(errors="replace")
                 output_parts.append(stdout_text)
 
-            if result.stderr and result.stderr.strip():
-                stderr_text = result.stderr.decode(errors="replace")
+            if stderr and stderr.strip():
+                stderr_text = stderr.decode(errors="replace")
                 output_parts.append(f"STDERR:\n{stderr_text}")
-
-            if result.returncode != 0:
-                output_parts.append(f"\nExit code: {result.returncode}")
 
             result_str = "\n".join(output_parts) if output_parts else "(no output)"
 
@@ -144,10 +115,6 @@ class ExecTool(Tool):
             return f"Error: Command timed out after {self.timeout} seconds"
         except Exception as e:
             return f"Error executing command: {str(e)}"
-        finally:
-            # 恢复 InputListener
-            if listener:
-                listener.resume()
 
     def _guard_command(self, command: str, cwd: str) -> str | None:
         """Best-effort safety guard for potentially destructive commands."""

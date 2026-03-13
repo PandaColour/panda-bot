@@ -3,7 +3,9 @@
     "allow": [
       "Bash(python:*)",
       "Bash(rm:*)",
-      "Bash(ls -la D:/github/panda-bot/*.py 2>/dev/null || dir /b \"D:\\\\github\\\\panda-bot\\\\*.py\" 2>nul)"
+      "Bash(ls -la D:/github/panda-bot/*.py 2>/dev/null || dir /b \"D:\\\\github\\\\panda-bot\\\\*.py\" 2>nul)",
+      "Bash(pip show:*)",
+      "Bash(pip install:*)"
     ]
   }
 }
