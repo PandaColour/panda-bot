@@ -5,7 +5,11 @@
       "Bash(rm:*)",
       "Bash(ls -la D:/github/panda-bot/*.py 2>/dev/null || dir /b \"D:\\\\github\\\\panda-bot\\\\*.py\" 2>nul)",
       "Bash(pip show:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(playwright install:*)",
+      "WebSearch",
+      "Bash(claude mcp:*)",
+      "Bash(where npx:*)"
     ]
   }
 }

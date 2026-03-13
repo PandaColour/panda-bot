@@ -39,7 +39,7 @@ from typing import Optional, Union, List
 # ============================================================================
 DEFAULT_CONFIG = {
     "level": "INFO",
-    "log_dir": "../logs",
+    "log_dir": "..\logs",
     "max_bytes": 500 * 1024 * 1024,  # 500MB
     "backup_count": 10,
     "queue_size": 10000,
