@@ -43,7 +43,7 @@ async def run_main_loop():
 
         # 创建 Agent 任务
         agent_loop = AgentLoop()
-        await agent_loop.runloop(main_session)
+        await agent_loop.runloop(main_session, description=user_input.strip())
 
 
 def main():
