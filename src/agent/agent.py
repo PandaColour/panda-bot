@@ -1,8 +1,7 @@
 """智能体核心 - 控制层"""
 import asyncio
-import os
 from enum import Enum
-from typing import Dict, Optional, List
+from typing import Dict
 
 from src.models import GLMProvider
 from src.utils import get_logger
@@ -18,7 +17,6 @@ from ..config.config_manager import globe_config_manager
 logger = get_logger(__name__)
 
 
-
 # 状态机: INIT → THINK → ACTING → VALIDATE → DONE / ERROR
 class AgentState(Enum):
     IDLE = "idle"           # 等待用户输入
@@ -28,6 +26,7 @@ class AgentState(Enum):
     PAUSED = "paused"       # 已暂停
     DONE = "done"           # 任务完成
     ERROR = "error"         # 任务失败
+
 
 class AgentLoop:
 
@@ -49,44 +48,15 @@ class AgentLoop:
 
         logger.debug("Agent 初始化完成")
 
-    async def _load_mcp_tools(self) -> None:
-        """加载 MCP 工具"""
-        # Playwright MCP - Extension 模式连接真实浏览器
-        playwright_token = self.config.get("playwright.token", None)
-
-        if playwright_token:
-            logger.info("正在加载 Playwright MCP (Extension 模式)...")
-            tools = await self.mcp_manager.add_stdio_server(
-                "playwright",
-                "npx @playwright/mcp@latest --extension",
-                env={"PLAYWRIGHT_MCP_EXTENSION_TOKEN": playwright_token}
-            )
-
-            if not tools:
-                logger.warning(
-                    "Playwright MCP 加载失败。请检查:\n"
-                    "  1. Chrome 扩展 Playwright MCP Bridge 是否已安装并启用\n"
-                    "  2. 扩展中的 Token 是否与环境变量匹配\n"
-                    "  3. 尝试重启 Chrome 浏览器"
-                )
-        else:
-            logger.warning(
-                "未设置 PLAYWRIGHT_MCP_EXTENSION_TOKEN，跳过 Playwright MCP。\n"
-                "请在扩展中获取 Token 并设置环境变量。"
-            )
-
-        # 可以在这里添加更多 MCP 服务器
-        # await self.mcp_manager.add_http_server("ftd", "https://example.com/mcp")
-
     async def runloop(self, session: Session):
-        """执行智能体主循环（异步生成器，实时输出）"""
+        """执行智能体主循环"""
         self.state = AgentState.INIT
         self.step_count = 0
         self.retry_count = 0
         logger.info("Agent 开始执行任务")
 
-        # 加载 MCP 工具
-        await self._load_mcp_tools()
+        # 从配置加载 MCP 工具
+        await self.mcp_manager.load_from_config()
 
         tool_registry = ToolRegistry()
         tool_registry.register(ExecTool())
@@ -109,7 +79,11 @@ class AgentLoop:
             try:
                 context_messages = self.context_builder.build(session)
                 logger.debug(f"构建上下文完成，消息数: {len(context_messages)}")
-                response = await asyncio.to_thread(self.provider.chat, context_messages, tool_registry.get_definitions())
+                response = await asyncio.to_thread(
+                    self.provider.chat,
+                    context_messages,
+                    tool_registry.get_definitions()
+                )
                 logger.debug(f"LLM 响应: {response}")
             except Exception as e:
                 logger.error(f"LLM 调用失败: {str(e)}")
@@ -136,7 +110,6 @@ class AgentLoop:
 
         # 清理 MCP 连接
         await self.mcp_manager.close_all()
-
 
     def get_status(self) -> Dict:
         """获取当前状态"""

@@ -381,6 +381,91 @@ class MCPManager:
     def __init__(self):
         self._connections: dict[str, MCPConnection] = {}
         self._tools: list[MCPTool] = []
+        self._config = globe_config_manager
+
+    async def load_from_config(self) -> None:
+        """从配置文件自动加载 MCP 服务器"""
+        mcp_servers = self._config.get("mcp_servers", {})
+
+        if not mcp_servers:
+            logger.warning("未配置任何 MCP 服务器")
+            return
+
+        for name, server_config in mcp_servers.items():
+            # 检查是否启用
+            if not server_config.get("enabled", True):
+                logger.debug(f"[{name}] 已禁用，跳过")
+                continue
+
+            server_type = server_config.get("type", "stdio")
+
+            try:
+                if server_type == "stdio":
+                    await self._load_stdio_server(name, server_config)
+                elif server_type == "http":
+                    await self._load_http_server(name, server_config)
+                else:
+                    logger.warning(f"[{name}] 未知的 MCP 类型: {server_type}")
+            except Exception as e:
+                logger.error(f"[{name}] 加载失败: {e}")
+
+    def _resolve_env_vars(self, env: dict) -> dict:
+        """解析环境变量中的配置引用，如 ${playwright.token}"""
+        import re
+        resolved = {}
+
+        for key, value in env.items():
+            if isinstance(value, str):
+                # 匹配 ${xxx.yyy} 格式
+                pattern = r'\$\{([^}]+)\}'
+
+                def replace_config_ref(match):
+                    config_key = match.group(1)
+                    config_value = self._config.get(config_key)
+                    if config_value is None:
+                        logger.warning(f"配置引用未找到: {config_key}")
+                        return match.group(0)  # 保持原样
+                    return str(config_value)
+
+                resolved[key] = re.sub(pattern, replace_config_ref, value)
+            else:
+                resolved[key] = value
+
+        return resolved
+
+    async def _load_stdio_server(self, name: str, config: dict) -> None:
+        """加载 stdio 类型的 MCP 服务器"""
+        command = config.get("command")
+        if not command:
+            logger.error(f"[{name}] 缺少 command 配置")
+            return
+
+        env = self._resolve_env_vars(config.get("env", {}))
+
+        logger.info(f"[{name}] 正在加载 stdio MCP: {command}")
+        tools = await self.add_stdio_server(name, command, env)
+
+        if tools:
+            logger.info(f"[{name}] 加载成功，共 {len(tools)} 个工具")
+        else:
+            logger.warning(f"[{name}] 加载失败或无可用工具")
+
+    async def _load_http_server(self, name: str, config: dict) -> None:
+        """加载 http 类型的 MCP 服务器"""
+        url = config.get("url")
+        if not url:
+            logger.error(f"[{name}] 缺少 url 配置")
+            return
+
+        headers = config.get("headers", {})
+
+        logger.info(f"[{name}] 正在加载 HTTP MCP: {url}")
+        tools = await self.add_http_server(name, url, headers)
+
+        if tools:
+            logger.info(f"[{name}] 加载成功，共 {len(tools)} 个工具")
+        else:
+            logger.warning(f"[{name}] 加载失败或无可用工具")
 
     async def add_stdio_server(
         self,
