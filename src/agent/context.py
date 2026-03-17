@@ -1,7 +1,8 @@
 """上下文构建器 - 管理传递给 LLM 的上下文"""
 import platform
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
+import distro
 
 from src.agent.session import Session
 from src.config import ConfigManager
@@ -45,19 +46,6 @@ class ContextBuilder:
         self._system_prompt_cache = f"{base_prompt}\n\n## 运行环境\n\n{os_info}"
         return self._system_prompt_cache
 
-    def _get_tools(self) -> List[Dict[str, Any]]:
-        """获取工具列表"""
-        TOOLS = [{
-            "name": "bash",
-            "description": "Run a shell command.",
-            "input_schema": {
-                "type": "object",
-                "properties": {"command": {"type": "string"}},
-                "required": ["command"],
-            },
-        }]
-        return TOOLS
-
     def _get_os_info(self) -> str:
         system = platform.system()
         release = platform.release()
@@ -72,10 +60,11 @@ class ContextBuilder:
         else:
             return f"- 操作系统: {system} {release}"
 
-    def _get_linux_distro(self) -> str:
+    @staticmethod
+    def _get_linux_distro() -> str:
         """获取 Linux 发行版信息"""
         try:
-            import distro
+
             return f"{distro.name()} {distro.version()}"
         except ImportError:
             return "Unknown"
