@@ -3,7 +3,7 @@ import asyncio
 from enum import Enum
 from typing import Dict
 
-from src.models import GLMProvider
+from src.models import ProviderFactory
 from src.utils import get_logger
 
 from .context import ContextBuilder
@@ -32,7 +32,7 @@ class AgentLoop:
 
     def __init__(self, session: Session):
         self.session         = session
-        self.provider        = GLMProvider()
+        self.provider        = ProviderFactory.create_provider()
         self.context_builder = ContextBuilder(globe_config_manager)
         self.mcp_manager     = MCPManager()
         self.tool_registry   = ToolRegistry()

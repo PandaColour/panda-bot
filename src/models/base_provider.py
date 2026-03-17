@@ -34,6 +34,9 @@ class BaseProvider(ABC):
     def __init__(self):
         self.config = globe_config_manager
 
+    def get_provider_name(self) -> str:
+        pass
+
     @abstractmethod
     def chat(self,
              messages: List[Dict[str, str]],

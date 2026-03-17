@@ -1,18 +1,30 @@
 {
-  "llm": {
-    "provider": "zhipu",
-    "base_url": "https://open.bigmodel.cn/api/anthropic",
-    "api_key": "your-zhipu-apikey",
-    "model": "glm-5",
-    "max_tokens": 131072,
-    "temperature": 0
+  "models": {
+    "active": "zhipu",
+    "providers": [
+      {
+      "type": "zhipu",
+      "api_key": "your-zhipu-apikey,
+      "model": "glm-5",
+      "max_tokens": 131072,
+      "temperature": 0
+      },
+      {
+        "provider": "http",
+        "base_url": "https://open.bigmodel.cn/api/anthropic",
+        "api_key": "your-zhipu-apikey",
+        "model": "glm-5",
+        "max_tokens": 131072,
+        "temperature": 0
+      }
+    ]
   },
   "mcp_servers": {
     "playwright": {
       "type": "stdio",
       "command": "npx @playwright/mcp@latest --extension",
       "env": {
-        "PLAYWRIGHT_MCP_EXTENSION_TOKEN": "your-playwright-token"
+        "PLAYWRIGHT_MCP_EXTENSION_TOKEN": ""
       },
       "enabled": true
     }

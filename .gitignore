@@ -18,3 +18,4 @@ ENV/
 workspace/
 config/config.json
 /logs/
+/node_modules/
