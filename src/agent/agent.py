@@ -13,6 +13,7 @@ from .tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDir
 from .tools.shell import ExecTool
 from .tools.planning import PlanTaskTool, FinishTaskTool
 from ..config.config_manager import globe_config_manager
+from ..models.http_provider import HttpProvider
 
 logger = get_logger(__name__)
 
@@ -32,7 +33,8 @@ class AgentLoop:
 
     def __init__(self, session: Session):
         self.session         = session
-        self.provider        = GLMProvider()
+        # self.provider        = GLMProvider()
+        self.provider        = HttpProvider()
         self.context_builder = ContextBuilder(globe_config_manager)
         self.mcp_manager     = MCPManager()
         self.tool_registry   = ToolRegistry()
