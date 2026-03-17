@@ -1,9 +1,5 @@
 requests>=2.28.0
 zai-sdk>=0.2.2
-textual>=0.47.0
-typer>=0.9.0
-rich>=13.0.0
 aioconsole>=0.8.2
-playwright>=1.58.0
 aiohttp>=3.13.3
 distro>=1.9.0
