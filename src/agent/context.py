@@ -9,7 +9,7 @@ from src.config import ConfigManager
 class ContextBuilder:
     TEMPLATE_DIR = Path(__file__).parent / "prompts"
     DEFAULT_PROMPT_FILE = "AGENTS.md"
-    SYSTEM_ROLE = "assistant"
+    SYSTEM_ROLE = "system"
 
     def __init__(self, config: Optional[ConfigManager] = None):
         self.config = config or ConfigManager()
