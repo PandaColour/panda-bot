@@ -15,13 +15,15 @@ logger = get_logger(__name__)
 
 class GLMProvider(BaseProvider):
     """智谱 GLM-5 模型提供商"""
-    def __init__(self, ):
+    def __init__(self, config_dict: Optional[Dict[str, Any]] = None):
         super().__init__()
-        self.base_url = self.config.get("llm.base_url")
-        self.api_key = self.config.get("llm.api_key", "")
-        self.model = self.config.get("llm.model", "glm-5")
-        self.temperature = self.config.get("llm.temperature", 0.7)
-        self.max_tokens = self.config.get("llm.max_tokens", 102400)
+        if config_dict:
+            # 使用传入的配置字典
+            self.base_url = config_dict.get("base_url")
+            self.api_key = config_dict.get("api_key", "")
+            self.model = config_dict.get("model", "glm-5")
+            self.temperature = config_dict.get("temperature", 0.7)
+            self.max_tokens = config_dict.get("max_tokens", 102400)
         self.client = ZhipuAiClient(api_key=self.api_key)
 
     def chat(self,
