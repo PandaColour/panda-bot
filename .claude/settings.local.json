@@ -9,7 +9,8 @@
       "Bash(playwright install:*)",
       "WebSearch",
       "Bash(claude mcp:*)",
-      "Bash(where npx:*)"
+      "Bash(where npx:*)",
+      "Bash(cd:*)"
     ]
   }
 }

@@ -69,13 +69,28 @@ class Session:
         self.messages.append({"role": ASSISTANT, "content": content})
         print(f"{ASSISTANT} {content}")
 
-    async def add_tool_result(self, tool_name: str, result: Dict[str, Any]) -> None:
+    async def add_assistant_tool_calls(self, content: Optional[str], tool_calls: list) -> None:
+        """添加 assistant 的 tool_calls 消息（必须在 tool result 之前）"""
+        msg: Dict[str, Any] = {"role": "assistant", "content": content or ""}
+        msg["tool_calls"] = [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.name, "arguments": json.dumps(tc.arguments, ensure_ascii=False)}
+            }
+            for tc in tool_calls
+        ]
+        self.messages.append(msg)
+
+    async def add_tool_result(self, tool_call_id: str, result: Dict[str, Any]) -> None:
         """添加工具执行结果"""
+        content = result.get("result", "") if isinstance(result, dict) else str(result)
         self.messages.append({
-            "role": USER,  # GLM 使用 user 角色传递工具结果
-            "content": f"Tool [{tool_name}] result:\n{json.dumps(result, ensure_ascii=False, indent=2)}"
+            "role": "tool",
+            "tool_call_id": tool_call_id,
+            "content": content
         })
-        print(f"{ASSISTANT} {json.dumps(result, ensure_ascii=False, indent=2)}")
+        print(f"[tool] {content}")
 
     async def add_error(self, error_msg: str) -> None:
         """添加错误信息"""
