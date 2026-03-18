@@ -11,6 +11,7 @@ from .session import Session
 from .tools import ToolRegistry, MCPManager
 from .tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
 from .tools.shell import ExecTool
+from .tools.python3 import Python3Tool
 from .tools.planning import PlanTaskTool, FinishTaskTool
 from ..config.config_manager import globe_config_manager
 
@@ -47,7 +48,7 @@ class AgentLoop:
 
     async def _register_tools(self):
         await self.mcp_manager.load_from_config()
-        for tool in [ExecTool(), ReadFileTool(), WriteFileTool(),
+        for tool in [ExecTool(), Python3Tool(), ReadFileTool(), WriteFileTool(),
                      EditFileTool(), ListDirTool(),
                      PlanTaskTool(), FinishTaskTool()]:
             self.tool_registry.register(tool)
