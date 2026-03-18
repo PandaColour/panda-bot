@@ -6,27 +6,40 @@ import distro
 
 from src.agent.session import Session
 from src.config import ConfigManager
+from src.agent.skills import SkillLoader
 
 class ContextBuilder:
     TEMPLATE_DIR = Path(__file__).parent / "prompts"
+    SKILLS_DIR   = Path(__file__).parent / "prompts" / "skills"
     DEFAULT_PROMPT_FILE = "AGENTS.md"
     SYSTEM_ROLE = "system"
 
     def __init__(self, config: Optional[ConfigManager] = None):
         self.config = config or ConfigManager()
-        self.max_history_messages = 50  # 最大历史消息数
+        self.max_history_messages = 50
         self._system_prompt_cache: Optional[str] = None
+        self._skill_loader = SkillLoader(self.SKILLS_DIR)
 
     def build(self, session: Session) -> List[Dict[str, str]]:
-        chat_messages = []
-        # 1. 添加系统提示词
+        # 1. 基础系统提示词（缓存）
         system_prompt = self._get_system_prompt()
-        chat_messages.append({"role": self.SYSTEM_ROLE, "content": system_prompt})
 
-        # 2. 添加历史消息
-        history_message = session.get_messages()
-        chat_messages.extend(history_message)
-        return chat_messages
+        # 2. 动态注入 skills：取最新一条用户消息作为匹配文本
+        last_user_input = self._get_last_user_input(session)
+        skill_text = self._skill_loader.get_prompt(last_user_input)
+        if skill_text:
+            system_prompt = system_prompt + "\n\n" + skill_text
+
+        messages = [{"role": self.SYSTEM_ROLE, "content": system_prompt}]
+        messages.extend(session.get_messages())
+        return messages
+
+    def _get_last_user_input(self, session: Session) -> str:
+        """从 session 消息中取最后一条 user 消息内容"""
+        for msg in reversed(session.get_messages()):
+            if msg.get("role") == "user" and isinstance(msg.get("content"), str):
+                return msg["content"]
+        return ""
 
     def _get_system_prompt(self) -> str:
         """获取系统提示词 (优先从配置读取，其次从文件加载)"""
