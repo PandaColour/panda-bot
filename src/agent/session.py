@@ -70,7 +70,7 @@ class Session:
                 items.append(item)
             except asyncio.QueueEmpty:
                 break
-        return "".join(items)
+        return "\n".join(items)
 
     async def add_user_input(self, content: str) -> None:
         """添加用户输入"""
@@ -106,12 +106,9 @@ class Session:
         print(f"[tool] {content}")
 
     async def add_error(self, error_msg: str) -> None:
-        """添加错误信息"""
-        self.messages.append({
-            "role": USER,
-            "content": f"Error: {error_msg}"
-        })
-        print(f"{ASSISTANT} {error_msg}")
+        """添加错误信息（作为 assistant 消息呈现给用户）"""
+        self.messages.append({"role": ASSISTANT, "content": f"Error: {error_msg}"})
+        print(f"{ASSISTANT} Error: {error_msg}")
 
     def get_messages(self) -> List[Dict[str, str]]:
         """获取所有消息"""

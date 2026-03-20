@@ -28,6 +28,9 @@
 
 import asyncio
 import json
+import os
+import re
+import traceback
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 import aiohttp
@@ -47,7 +50,6 @@ class MCPConnection(ABC):
         self._initialized = False
         self._request_id = 0
         self._tools: list[dict] = []
-        self.config = globe_config_manager
 
     @abstractmethod
     async def start(self) -> None:
@@ -66,25 +68,17 @@ class MCPConnection(ABC):
 
     async def initialize(self) -> None:
         """执行 MCP 协议握手"""
-        # 发送 initialize 请求
         result = await self.send_request("initialize", {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {
-                "name": "panda-bot",
-                "version": "1.0.0"
-            }
+            "clientInfo": {"name": "panda-bot", "version": "1.0.0"}
         })
-
         logger.debug(f"[{self.name}] Initialize result: {result}")
 
-        # 发送 initialized 通知
         await self.send_notification("notifications/initialized")
 
-        # 获取工具列表
         tools_result = await self.send_request("tools/list", {})
         self._tools = tools_result.get("tools", [])
-
         logger.info(f"[{self.name}] 已加载 {len(self._tools)} 个 MCP 工具")
         self._initialized = True
 
@@ -101,23 +95,20 @@ class MCPConnection(ABC):
             "name": tool_name,
             "arguments": arguments or {}
         })
-
-        # 解析结果
         return self._parse_result(result)
 
     def _parse_result(self, result: dict) -> str:
         """解析 MCP 工具返回结果"""
-        if isinstance(result, dict):
-            if "content" in result:
-                texts = []
-                for item in result.get("content", []):
-                    if item.get("type") == "text":
-                        texts.append(item.get("text", ""))
-                    elif item.get("type") == "image":
-                        texts.append(f"[Image: {item.get('mimeType', 'unknown')}]")
-                    elif item.get("type") == "resource":
-                        texts.append(f"[Resource: {item.get('resource', {}).get('uri', 'unknown')}]")
-                return "\n".join(texts) if texts else str(result)
+        if isinstance(result, dict) and "content" in result:
+            texts = []
+            for item in result.get("content", []):
+                if item.get("type") == "text":
+                    texts.append(item.get("text", ""))
+                elif item.get("type") == "image":
+                    texts.append(f"[Image: {item.get('mimeType', 'unknown')}]")
+                elif item.get("type") == "resource":
+                    texts.append(f"[Resource: {item.get('resource', {}).get('uri', 'unknown')}]")
+            return "\n".join(texts) if texts else str(result)
         return str(result)
 
     @property
@@ -140,13 +131,10 @@ class StdioMCPConnection(MCPConnection):
         if self._process is not None:
             return
 
-        # 准备环境变量
-        import os
         env = os.environ.copy()
         env.update(self.env)
 
         # Windows 上 npx 是 .cmd 文件，需要用 shell=True
-        # 使用 create_subprocess_shell 而不是 create_subprocess_exec
         self._process = await asyncio.create_subprocess_shell(
             self.command,
             stdin=asyncio.subprocess.PIPE,
@@ -155,12 +143,8 @@ class StdioMCPConnection(MCPConnection):
             env=env
         )
 
-        # 等待进程启动
         await asyncio.sleep(2)
-
         logger.info(f"[{self.name}] 已启动 MCP 进程: {self.command}")
-
-        # 执行协议握手
         await self.initialize()
 
     async def send_request(self, method: str, params: dict = None) -> dict:
@@ -176,85 +160,65 @@ class StdioMCPConnection(MCPConnection):
             "params": params or {}
         }
 
-        # 发送请求
         line = json.dumps(request) + "\n"
         self._process.stdin.write(line.encode())
         await self._process.stdin.drain()
 
-        # 读取响应（带超时），跳过非 JSON 行
-        response = None
-        max_attempts = 50  # 最多跳过 50 行非 JSON 输出
-
-        for _ in range(max_attempts):
+        # 读取响应，跳过非 JSON 行（日志输出等）
+        for _ in range(50):
             response_line = await asyncio.wait_for(
-                self._process.stdout.readline(),
-                timeout=60.0
+                self._process.stdout.readline(), timeout=60.0
             )
-
             if not response_line:
-                raise RuntimeError(f"[{self.name}] 无响应")
+                raise RuntimeError(f"[{self.name}] 连接已断开（EOF）")
 
             line_text = response_line.decode().strip()
             if not line_text:
                 continue
 
-            # 尝试解析 JSON
             try:
                 response = json.loads(line_text)
-                break
             except json.JSONDecodeError:
-                # 非 JSON 行，可能是日志输出
                 logger.debug(f"[{self.name}] 跳过非 JSON 行: {line_text[:100]}")
                 continue
 
-        if response is None:
-            raise RuntimeError(f"[{self.name}] 未收到有效 JSON 响应")
+            if "error" in response:
+                error = response["error"]
+                msg = error.get("message", error) if isinstance(error, dict) else error
+                raise RuntimeError(f"[{self.name}] MCP 错误: {msg}")
 
-        if "error" in response:
-            error = response["error"]
-            if isinstance(error, dict):
-                raise RuntimeError(f"[{self.name}] MCP 错误: {error.get('message', error)}")
-            raise RuntimeError(f"[{self.name}] MCP 错误: {error}")
+            return response.get("result", {})
 
-        return response.get("result", {})
+        raise RuntimeError(f"[{self.name}] 未收到有效 JSON 响应")
 
     async def send_notification(self, method: str, params: dict = None) -> None:
-        """发送通知（无需响应）"""
         if not self._process:
             return
-
-        notification = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {}
-        }
-
-        line = json.dumps(notification) + "\n"
-        self._process.stdin.write(line.encode())
+        notification = {"jsonrpc": "2.0", "method": method, "params": params or {}}
+        self._process.stdin.write((json.dumps(notification) + "\n").encode())
         await self._process.stdin.drain()
 
     async def close(self) -> None:
-        """关闭连接"""
-        if self._process:
-            try:
-                # 发送 shutdown 请求
-                self._request_id += 1
-                shutdown = {"jsonrpc": "2.0", "id": self._request_id, "method": "shutdown"}
-                self._process.stdin.write((json.dumps(shutdown) + "\n").encode())
-                await self._process.stdin.drain()
-                await asyncio.sleep(0.2)
-            except Exception:
-                pass
+        if not self._process:
+            return
+        try:
+            self._request_id += 1
+            shutdown = {"jsonrpc": "2.0", "id": self._request_id, "method": "shutdown"}
+            self._process.stdin.write((json.dumps(shutdown) + "\n").encode())
+            await self._process.stdin.drain()
+            await asyncio.sleep(0.2)
+        except Exception:
+            pass
 
-            self._process.terminate()
-            try:
-                await asyncio.wait_for(self._process.wait(), timeout=3)
-            except asyncio.TimeoutError:
-                self._process.kill()
+        self._process.terminate()
+        try:
+            await asyncio.wait_for(self._process.wait(), timeout=3)
+        except asyncio.TimeoutError:
+            self._process.kill()
 
-            self._process = None
-            self._initialized = False
-            logger.info(f"[{self.name}] 已关闭连接")
+        self._process = None
+        self._initialized = False
+        logger.info(f"[{self.name}] 已关闭连接")
 
 
 class HTTPMCPConnection(MCPConnection):
@@ -267,18 +231,13 @@ class HTTPMCPConnection(MCPConnection):
         self._session: Optional[aiohttp.ClientSession] = None
 
     async def start(self) -> None:
-        """创建 HTTP 会话"""
         if self._session is not None:
             return
-
         self._session = aiohttp.ClientSession(headers=self.headers)
         logger.info(f"[{self.name}] 已连接到 HTTP MCP: {self.url}")
-
-        # 执行协议握手
         await self.initialize()
 
     async def send_request(self, method: str, params: dict = None) -> dict:
-        """发送 HTTP 请求"""
         if not self._session:
             raise RuntimeError(f"[{self.name}] 连接未启动")
 
@@ -291,38 +250,29 @@ class HTTPMCPConnection(MCPConnection):
         }
 
         async with self._session.post(
-            f"{self.url}",
+            self.url,
             json=request,
             headers={"Content-Type": "application/json"}
         ) as response:
             if response.status != 200:
                 text = await response.text()
                 raise RuntimeError(f"[{self.name}] HTTP {response.status}: {text}")
-
             data = await response.json()
 
         if "error" in data:
             error = data["error"]
-            if isinstance(error, dict):
-                raise RuntimeError(f"[{self.name}] MCP 错误: {error.get('message', error)}")
-            raise RuntimeError(f"[{self.name}] MCP 错误: {error}")
+            msg = error.get("message", error) if isinstance(error, dict) else error
+            raise RuntimeError(f"[{self.name}] MCP 错误: {msg}")
 
         return data.get("result", {})
 
     async def send_notification(self, method: str, params: dict = None) -> None:
-        """发送通知（HTTP POST，忽略响应）"""
         if not self._session:
             return
-
-        notification = {
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params or {}
-        }
-
+        notification = {"jsonrpc": "2.0", "method": method, "params": params or {}}
         try:
             await self._session.post(
-                f"{self.url}",
+                self.url,
                 json=notification,
                 headers={"Content-Type": "application/json"}
             )
@@ -330,7 +280,6 @@ class HTTPMCPConnection(MCPConnection):
             pass  # 通知不需要确认
 
     async def close(self) -> None:
-        """关闭 HTTP 会话"""
         if self._session:
             await self._session.close()
             self._session = None
@@ -343,32 +292,23 @@ class MCPTool(Tool):
 
     def __init__(self, connection: MCPConnection, tool_def: dict):
         self._connection = connection
-        self._tool_def = tool_def
         self._name = tool_def.get("name", "unknown")
         self._description = tool_def.get("description", "")
         self._parameters = tool_def.get("inputSchema", {})
 
     @property
     def name(self) -> str:
-        # 添加 mcp_ 前缀以区分
         return f"mcp_{self._name}"
 
     @property
-    def def_name(self) -> str:
-        """原始 MCP 工具名"""
-        return self._name
-
-    @property
     def description(self) -> str:
-        server_name = self._connection.name
-        return f"[MCP:{server_name}] {self._description}"
+        return f"[MCP:{self._connection.name}] {self._description}"
 
     @property
     def parameters(self) -> dict[str, Any]:
         return self._parameters
 
     async def execute(self, **kwargs: Any) -> str:
-        """执行 MCP 工具"""
         try:
             return await self._connection.call_tool(self._name, kwargs)
         except Exception as e:
@@ -386,179 +326,84 @@ class MCPManager:
     async def load_from_config(self) -> None:
         """从配置文件自动加载 MCP 服务器"""
         mcp_servers = self._config.get("mcp_servers", {})
-
         if not mcp_servers:
             logger.warning("未配置任何 MCP 服务器")
             return
 
         for name, server_config in mcp_servers.items():
-            # 检查是否启用
             if not server_config.get("enabled", True):
                 logger.debug(f"[{name}] 已禁用，跳过")
                 continue
 
             server_type = server_config.get("type", "stdio")
-
             try:
                 if server_type == "stdio":
-                    await self._load_stdio_server(name, server_config)
+                    command = server_config.get("command")
+                    if not command:
+                        logger.error(f"[{name}] 缺少 command 配置")
+                        continue
+                    env = self._resolve_env_vars(server_config.get("env", {}))
+                    logger.info(f"[{name}] 正在加载 stdio MCP: {command}")
+                    await self.add_stdio_server(name, command, env)
+
                 elif server_type == "http":
-                    await self._load_http_server(name, server_config)
+                    url = server_config.get("url")
+                    if not url:
+                        logger.error(f"[{name}] 缺少 url 配置")
+                        continue
+                    logger.info(f"[{name}] 正在加载 HTTP MCP: {url}")
+                    await self.add_http_server(name, url, server_config.get("headers", {}))
+
                 else:
                     logger.warning(f"[{name}] 未知的 MCP 类型: {server_type}")
+
             except Exception as e:
                 logger.error(f"[{name}] 加载失败: {e}")
 
     def _resolve_env_vars(self, env: dict) -> dict:
         """解析环境变量中的配置引用，如 ${playwright.token}"""
-        import re
         resolved = {}
-
+        pattern = re.compile(r'\$\{([^}]+)\}')
         for key, value in env.items():
             if isinstance(value, str):
-                # 匹配 ${xxx.yyy} 格式
-                pattern = r'\$\{([^}]+)\}'
-
-                def replace_config_ref(match):
-                    config_key = match.group(1)
-                    config_value = self._config.get(config_key)
+                def replace_ref(match):
+                    config_value = self._config.get(match.group(1))
                     if config_value is None:
-                        logger.warning(f"配置引用未找到: {config_key}")
-                        return match.group(0)  # 保持原样
+                        logger.warning(f"配置引用未找到: {match.group(1)}")
+                        return match.group(0)
                     return str(config_value)
-
-                resolved[key] = re.sub(pattern, replace_config_ref, value)
+                resolved[key] = pattern.sub(replace_ref, value)
             else:
                 resolved[key] = value
-
         return resolved
 
-    async def _load_stdio_server(self, name: str, config: dict) -> None:
-        """加载 stdio 类型的 MCP 服务器"""
-        command = config.get("command")
-        if not command:
-            logger.error(f"[{name}] 缺少 command 配置")
-            return
-
-        env = self._resolve_env_vars(config.get("env", {}))
-
-        logger.info(f"[{name}] 正在加载 stdio MCP: {command}")
-        tools = await self.add_stdio_server(name, command, env)
-
-        if tools:
-            logger.info(f"[{name}] 加载成功，共 {len(tools)} 个工具")
-        else:
-            logger.warning(f"[{name}] 加载失败或无可用工具")
-
-    async def _load_http_server(self, name: str, config: dict) -> None:
-        """加载 http 类型的 MCP 服务器"""
-        url = config.get("url")
-        if not url:
-            logger.error(f"[{name}] 缺少 url 配置")
-            return
-
-        headers = config.get("headers", {})
-
-        logger.info(f"[{name}] 正在加载 HTTP MCP: {url}")
-        tools = await self.add_http_server(name, url, headers)
-
-        if tools:
-            logger.info(f"[{name}] 加载成功，共 {len(tools)} 个工具")
-        else:
-            logger.warning(f"[{name}] 加载失败或无可用工具")
-
-    async def add_stdio_server(
-        self,
-        name: str,
-        command: str,
-        env: dict = None
-    ) -> list[MCPTool]:
-        """添加 stdio MCP 服务器
-
-        Args:
-            name: 服务器名称
-            command: 启动命令 (如 "npx @playwright/mcp@latest --extension")
-            env: 环境变量
-
-        Returns:
-            加载的工具列表
-        """
+    async def _add_connection(self, name: str, conn: MCPConnection) -> list["MCPTool"]:
+        """启动连接并将其工具加入注册表，返回加载的工具列表"""
         if name in self._connections:
             logger.warning(f"[{name}] 连接已存在，跳过")
             return []
-
-        conn = StdioMCPConnection(name, command, env)
         try:
             await conn.start()
             self._connections[name] = conn
-
-            # 创建工具包装器
-            tools = []
-            for tool_def in conn.tools:
-                tool = MCPTool(conn, tool_def)
-                tools.append(tool)
-                self._tools.append(tool)
-
-            logger.info(f"[{name}] 已加载 {len(tools)} 个工具: {[t.name for t in tools]}")
+            tools = [MCPTool(conn, td) for td in conn.tools]
+            self._tools.extend(tools)
+            logger.info(f"[{name}] 加载成功，共 {len(tools)} 个工具: {[t.name for t in tools]}")
             return tools
-
         except Exception as e:
-            import traceback
             logger.error(f"[{name}] 连接失败: {e}")
             logger.debug(f"[{name}] 错误详情:\n{traceback.format_exc()}")
             await conn.close()
             return []
 
-    async def add_http_server(
-        self,
-        name: str,
-        url: str,
-        headers: dict = None
-    ) -> list[MCPTool]:
-        """添加 HTTP MCP 服务器
+    async def add_stdio_server(self, name: str, command: str, env: dict = None) -> list["MCPTool"]:
+        return await self._add_connection(name, StdioMCPConnection(name, command, env))
 
-        Args:
-            name: 服务器名称
-            url: MCP 服务器 URL
-            headers: HTTP 请求头
+    async def add_http_server(self, name: str, url: str, headers: dict = None) -> list["MCPTool"]:
+        return await self._add_connection(name, HTTPMCPConnection(name, url, headers))
 
-        Returns:
-            加载的工具列表
-        """
-        if name in self._connections:
-            logger.warning(f"[{name}] 连接已存在，跳过")
-            return []
-
-        conn = HTTPMCPConnection(name, url, headers)
-        try:
-            await conn.start()
-            self._connections[name] = conn
-
-            # 创建工具包装器
-            tools = []
-            for tool_def in conn.tools:
-                tool = MCPTool(conn, tool_def)
-                tools.append(tool)
-                self._tools.append(tool)
-
-            logger.info(f"[{name}] 已加载 {len(tools)} 个工具: {[t.name for t in tools]}")
-            return tools
-
-        except Exception as e:
-            logger.error(f"[{name}] 连接失败: {e}")
-            await conn.close()
-            return []
-
-    def get_tools(self) -> list[MCPTool]:
+    def get_tools(self) -> list["MCPTool"]:
         """获取所有 MCP 工具"""
         return self._tools.copy()
-
-    def get_tool(self, name: str) -> Optional[MCPTool]:
-        """按名称获取工具"""
-        for tool in self._tools:
-            if tool.name == name:
-                return tool
-        return None
 
     async def close_all(self) -> None:
         """关闭所有连接"""
@@ -567,13 +412,11 @@ class MCPManager:
                 await conn.close()
             except Exception as e:
                 logger.error(f"[{name}] 关闭失败: {e}")
-
         self._connections.clear()
         self._tools.clear()
 
     @property
     def connections(self) -> dict[str, MCPConnection]:
-        """获取所有连接"""
         return self._connections.copy()
 
     def __len__(self) -> int:

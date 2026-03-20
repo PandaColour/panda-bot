@@ -47,10 +47,9 @@ class ReadReferenceTool(Tool):
         ref_path = (self._skills_dir / skill / "references" / reference).with_suffix(".md")
 
         try:
-            resolved = ref_path.resolve()
-            skills_resolved = self._skills_dir.resolve()
-            if not str(resolved).startswith(str(skills_resolved)):
-                return "Error: path traversal detected"
+            ref_path.resolve().relative_to(self._skills_dir.resolve())
+        except ValueError:
+            return "Error: path traversal detected"
         except Exception:
             return "Error: invalid path"
 

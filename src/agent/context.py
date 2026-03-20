@@ -78,21 +78,6 @@ class ContextBuilder:
         except ImportError:
             return "Unknown"
 
-    def _truncate_messages(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        if len(messages) <= self.max_history_messages:
-            return messages
-        system_msg = messages[:1]
-        recent = messages[-(self.max_history_messages - 1):]
-        return system_msg + recent
-
-    def set_system_prompt(self, prompt: str) -> None:
-        self.config.set("agent.system_prompt", prompt)
-        self._system_prompt_cache = None
-
-    def reset_system_prompt(self) -> None:
-        self.config.set("agent.system_prompt", None)
-        self._system_prompt_cache = None
-
     def reload_system_prompt(self) -> str:
         self._system_prompt_cache = None
         return self._get_system_prompt()
