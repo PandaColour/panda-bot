@@ -54,9 +54,11 @@ class PlanTaskTool(Tool):
 class FinishTaskTool(Tool):
     """标记任务已完成并输出最终结果"""
 
+    NAME = "finish_task"
+
     @property
     def name(self) -> str:
-        return "finish_task"
+        return self.NAME
 
     @property
     def description(self) -> str:

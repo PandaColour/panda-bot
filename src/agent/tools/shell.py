@@ -3,15 +3,10 @@
 import asyncio
 import os
 import re
-import subprocess
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
 from .base import Tool
-
-# 独立的线程池，用于执行 subprocess
-_shell_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="shell_")
 
 
 class ExecTool(Tool):
@@ -82,15 +77,22 @@ class ExecTool(Tool):
             env["PATH"] = env.get("PATH", "") + os.pathsep + self.path_append
 
         try:
-            # 使用 subprocess.run() 在独立线程池中执行
-            # aioconsole 处理输入，不会产生冲突
             proc = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+                env=env if self.path_append else None,
             )
 
-            stdout, stderr = await proc.communicate()
+            try:
+                stdout, stderr = await asyncio.wait_for(
+                    proc.communicate(), timeout=self.timeout
+                )
+            except asyncio.TimeoutError:
+                proc.kill()
+                await proc.communicate()
+                return f"Error: Command timed out after {self.timeout} seconds"
 
             output_parts = []
 
@@ -111,8 +113,6 @@ class ExecTool(Tool):
 
             return result_str
 
-        except subprocess.TimeoutExpired:
-            return f"Error: Command timed out after {self.timeout} seconds"
         except Exception as e:
             return f"Error executing command: {str(e)}"
 

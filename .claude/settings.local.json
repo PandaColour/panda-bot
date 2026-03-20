@@ -10,7 +10,8 @@
       "WebSearch",
       "Bash(claude mcp:*)",
       "Bash(where npx:*)",
-      "Bash(cd:*)"
+      "Bash(cd:*)",
+      "Bash(mkdir:*)"
     ]
   }
 }

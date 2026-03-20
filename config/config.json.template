@@ -1,4 +1,9 @@
 {
+  "main-agent" : {
+    "workspace": "./workspace"
+  },
+  "sub-agents": [
+  ],
   "models": {
     "active": "zhipu",
     "providers": [

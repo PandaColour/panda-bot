@@ -11,7 +11,9 @@ from .session import Session
 from .tools import ToolRegistry, MCPManager
 from .tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
 from .tools.shell import ExecTool
+from .tools.python3 import Python3Tool
 from .tools.planning import PlanTaskTool, FinishTaskTool
+from .tools.skill_reference import ReadReferenceTool
 from ..config.config_manager import globe_config_manager
 
 logger = get_logger(__name__)
@@ -33,7 +35,7 @@ class AgentLoop:
     def __init__(self, session: Session):
         self.session         = session
         self.provider        = ProviderFactory.create_provider()
-        self.context_builder = ContextBuilder(globe_config_manager)
+        self.context_builder = ContextBuilder(globe_config_manager, workspace=session.workspace)
         self.mcp_manager     = MCPManager()
         self.tool_registry   = ToolRegistry()
         self.state           = AgentState.IDLE
@@ -47,9 +49,16 @@ class AgentLoop:
 
     async def _register_tools(self):
         await self.mcp_manager.load_from_config()
-        for tool in [ExecTool(), ReadFileTool(), WriteFileTool(),
-                     EditFileTool(), ListDirTool(),
-                     PlanTaskTool(), FinishTaskTool()]:
+        ws = self.session.workspace
+        for tool in [
+            ExecTool(working_dir=str(ws), restrict_to_workspace=True),
+            Python3Tool(working_dir=str(ws)),
+            ReadFileTool(workspace=ws),
+            WriteFileTool(workspace=ws),
+            EditFileTool(workspace=ws),
+            ListDirTool(workspace=ws),
+            PlanTaskTool(), FinishTaskTool(), ReadReferenceTool(skills_dir=ws / ".bot" / "skills"),
+        ]:
             self.tool_registry.register(tool)
         for mcp_tool in self.mcp_manager.get_tools():
             self.tool_registry.register(mcp_tool)
@@ -109,7 +118,7 @@ class AgentLoop:
                     )
                     await self.session.add_tool_result(tool_call.id, result)
 
-                    if tool_call.name == "finish_task":
+                    if tool_call.name == FinishTaskTool.NAME:
                         self.state = AgentState.DONE
                         logger.info("任务完成")
                         return
