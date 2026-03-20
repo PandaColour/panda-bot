@@ -13,6 +13,7 @@ from .tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDir
 from .tools.shell import ExecTool
 from .tools.python3 import Python3Tool
 from .tools.planning import PlanTaskTool, FinishTaskTool
+from .tools.skill_reference import ReadReferenceTool
 from ..config.config_manager import globe_config_manager
 
 logger = get_logger(__name__)
@@ -50,7 +51,7 @@ class AgentLoop:
         await self.mcp_manager.load_from_config()
         for tool in [ExecTool(), Python3Tool(), ReadFileTool(), WriteFileTool(),
                      EditFileTool(), ListDirTool(),
-                     PlanTaskTool(), FinishTaskTool()]:
+                     PlanTaskTool(), FinishTaskTool(), ReadReferenceTool()]:
             self.tool_registry.register(tool)
         for mcp_tool in self.mcp_manager.get_tools():
             self.tool_registry.register(mcp_tool)
