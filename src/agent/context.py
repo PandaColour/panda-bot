@@ -9,16 +9,16 @@ from src.config import ConfigManager
 from src.agent.skills import SkillLoader
 
 class ContextBuilder:
-    TEMPLATE_DIR = Path(__file__).parent / "prompts"
-    SKILLS_DIR   = Path(__file__).parent / "prompts" / "skills"
-    DEFAULT_PROMPT_FILE = "AGENTS.md"
     SYSTEM_ROLE = "system"
 
-    def __init__(self, config: Optional[ConfigManager] = None):
+    def __init__(self, config: Optional[ConfigManager] = None, workspace: Optional[Path] = None):
         self.config = config or ConfigManager()
         self.max_history_messages = 50
         self._system_prompt_cache: Optional[str] = None
-        self._skill_loader = SkillLoader(self.SKILLS_DIR)
+        self._workspace = Path(workspace) if workspace else None
+        bot_dir = self._workspace / ".bot" if self._workspace else None
+        self._prompt_file: Optional[Path] = bot_dir / "prompts" / "AGENT.md" if bot_dir else None
+        self._skill_loader = SkillLoader(bot_dir / "skills") if bot_dir else SkillLoader(Path())
 
     def build(self, session: Session) -> List[Dict[str, str]]:
         # 1. 基础系统提示词（缓存）
@@ -42,21 +42,19 @@ class ContextBuilder:
         return ""
 
     def _get_system_prompt(self) -> str:
-        """获取系统提示词 (优先从配置读取，其次从文件加载)"""
-        # 1. 从缓存读取
+        """获取系统提示词（从 workspace/.bot/prompts/AGENT.md 加载，带缓存）"""
         if self._system_prompt_cache is not None:
             return self._system_prompt_cache
 
-        # 2. 从模板文件加载
-        prompt_file = self.TEMPLATE_DIR / self.DEFAULT_PROMPT_FILE
-        if prompt_file.exists():
-            base_prompt = prompt_file.read_text(encoding="utf-8").strip()
+        if self._prompt_file and self._prompt_file.exists():
+            base_prompt = self._prompt_file.read_text(encoding="utf-8").strip()
         else:
             base_prompt = ""
 
-        # 3. 追加运行系统信息
         os_info = self._get_os_info()
-        self._system_prompt_cache = f"{base_prompt}\n\n## 运行环境\n\n{os_info}"
+        workspace_info = f"- 工作目录: {self._workspace}" if self._workspace else ""
+        env_section = f"{os_info}\n{workspace_info}".strip()
+        self._system_prompt_cache = f"{base_prompt}\n\n## 运行环境\n\n{env_section}"
         return self._system_prompt_cache
 
     def _get_os_info(self) -> str:
@@ -68,47 +66,33 @@ class ContextBuilder:
         elif system == "Darwin":
             return f"- 操作系统: macOS {release}"
         elif system == "Linux":
-            distro = self._get_linux_distro()
-            return f"- 操作系统: Linux ({distro})"
+            distro_info = self._get_linux_distro()
+            return f"- 操作系统: Linux ({distro_info})"
         else:
             return f"- 操作系统: {system} {release}"
 
     @staticmethod
     def _get_linux_distro() -> str:
-        """获取 Linux 发行版信息"""
         try:
-
             return f"{distro.name()} {distro.version()}"
         except ImportError:
             return "Unknown"
 
     def _truncate_messages(self, messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
-        """
-        截断消息列表，保持系统提示词和最近的消息
-
-        策略: 保留 system prompt + 最近 N 条消息
-        """
         if len(messages) <= self.max_history_messages:
             return messages
-
-        # 保留系统提示词
         system_msg = messages[:1]
-        # 保留最近的消息
         recent = messages[-(self.max_history_messages - 1):]
-
         return system_msg + recent
 
     def set_system_prompt(self, prompt: str) -> None:
-        """设置自定义系统提示词"""
         self.config.set("agent.system_prompt", prompt)
-        self._system_prompt_cache = None  # 清除缓存
+        self._system_prompt_cache = None
 
     def reset_system_prompt(self) -> None:
-        """重置为默认系统提示词 (从文件加载)"""
         self.config.set("agent.system_prompt", None)
-        self._system_prompt_cache = None  # 清除缓存，下次将从文件加载
+        self._system_prompt_cache = None
 
     def reload_system_prompt(self) -> str:
-        """强制重新加载系统提示词"""
         self._system_prompt_cache = None
         return self._get_system_prompt()

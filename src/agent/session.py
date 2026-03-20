@@ -1,6 +1,8 @@
 """会话管理模块"""
 import asyncio
 import json
+import shutil
+import uuid
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 from aioconsole import ainput
 
@@ -15,10 +17,21 @@ logger = get_logger(__name__)
 
 class Session:
     def __init__(self, workspace: Optional[Path] = None):
+        self.session_id = uuid.uuid4().hex[:8]
+        self.workspace: Path = Path(workspace) if workspace else DEFAULT_WORKSPACE / self.session_id
+        self.workspace.mkdir(parents=True, exist_ok=True)
+        self._init_bot_dir()
         self.user_inputs: asyncio.Queue[str] = asyncio.Queue()
         self.messages: List[Dict[str, str]] = []
-        self.workspace = workspace
         self._agent_loop: Optional["AgentLoop"] = None
+        logger.info(f"Session [{self.session_id}] workspace: {self.workspace}")
+
+    def _init_bot_dir(self) -> None:
+        """若 workspace/.bot 不存在，从 template 目录复制初始内容"""
+        bot_dir = self.workspace / ".bot"
+        if not bot_dir.exists():
+            shutil.copytree(TEMPLATE_DIR, bot_dir)
+            logger.info(f"已初始化 .bot 目录: {bot_dir}")
 
     @property
     def agent_loop(self) -> "AgentLoop":

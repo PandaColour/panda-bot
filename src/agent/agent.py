@@ -35,7 +35,7 @@ class AgentLoop:
     def __init__(self, session: Session):
         self.session         = session
         self.provider        = ProviderFactory.create_provider()
-        self.context_builder = ContextBuilder(globe_config_manager)
+        self.context_builder = ContextBuilder(globe_config_manager, workspace=session.workspace)
         self.mcp_manager     = MCPManager()
         self.tool_registry   = ToolRegistry()
         self.state           = AgentState.IDLE
@@ -49,9 +49,16 @@ class AgentLoop:
 
     async def _register_tools(self):
         await self.mcp_manager.load_from_config()
-        for tool in [ExecTool(), Python3Tool(), ReadFileTool(), WriteFileTool(),
-                     EditFileTool(), ListDirTool(),
-                     PlanTaskTool(), FinishTaskTool(), ReadReferenceTool()]:
+        ws = self.session.workspace
+        for tool in [
+            ExecTool(working_dir=str(ws), restrict_to_workspace=True),
+            Python3Tool(working_dir=str(ws)),
+            ReadFileTool(workspace=ws),
+            WriteFileTool(workspace=ws),
+            EditFileTool(workspace=ws),
+            ListDirTool(workspace=ws),
+            PlanTaskTool(), FinishTaskTool(), ReadReferenceTool(skills_dir=ws / ".bot" / "skills"),
+        ]:
             self.tool_registry.register(tool)
         for mcp_tool in self.mcp_manager.get_tools():
             self.tool_registry.register(mcp_tool)

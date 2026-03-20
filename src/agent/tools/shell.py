@@ -87,7 +87,9 @@ class ExecTool(Tool):
             proc = await asyncio.create_subprocess_shell(
                 command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
+                stderr=asyncio.subprocess.PIPE,
+                cwd=cwd,
+                env=env if self.path_append else None,
             )
 
             stdout, stderr = await proc.communicate()

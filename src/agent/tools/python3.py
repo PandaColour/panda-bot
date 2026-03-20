@@ -16,6 +16,11 @@ class Python3Tool(Tool):
     def __init__(self, timeout: int = 30, working_dir: str | None = None):
         self.timeout = timeout
         self.working_dir = working_dir
+        if working_dir:
+            self._tmp_dir = Path(working_dir) / ".tmp"
+            self._tmp_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            self._tmp_dir = None
 
     @property
     def name(self) -> str:
@@ -52,7 +57,7 @@ class Python3Tool(Tool):
 
         # 写入临时文件，避免多行代码在 -c 参数中的转义问题
         with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".py", delete=False, encoding="utf-8"
+            mode="w", suffix=".py", delete=False, encoding="utf-8", dir=self._tmp_dir
         ) as f:
             f.write(code)
             tmp_path = f.name

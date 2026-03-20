@@ -4,15 +4,15 @@ from typing import Any
 
 from .base import Tool
 
-# skills 目录的绝对路径
-_SKILLS_DIR = Path(__file__).parent.parent / "prompts" / "skills"
-
 
 class ReadReferenceTool(Tool):
     """
     按需读取 skill 的 reference 文档。
     当 skill 内容中提到 references/ 下的文件时，调用此工具获取详细内容。
     """
+
+    def __init__(self, skills_dir: Path):
+        self._skills_dir = skills_dir
 
     @property
     def name(self) -> str:
@@ -44,20 +44,18 @@ class ReadReferenceTool(Tool):
         }
 
     async def execute(self, skill: str, reference: str, **kwargs: Any) -> str:
-        # 限定路径在 skills 目录内，防止路径穿越
-        ref_path = (_SKILLS_DIR / skill / "references" / reference).with_suffix(".md")
+        ref_path = (self._skills_dir / skill / "references" / reference).with_suffix(".md")
 
         try:
             resolved = ref_path.resolve()
-            skills_resolved = _SKILLS_DIR.resolve()
+            skills_resolved = self._skills_dir.resolve()
             if not str(resolved).startswith(str(skills_resolved)):
                 return "Error: path traversal detected"
         except Exception:
             return "Error: invalid path"
 
         if not ref_path.exists():
-            # 列出可用的 references 帮助 LLM 纠正
-            ref_dir = _SKILLS_DIR / skill / "references"
+            ref_dir = self._skills_dir / skill / "references"
             if ref_dir.exists():
                 available = [p.stem for p in ref_dir.glob("*.md")]
                 return f"Error: '{reference}' not found. Available: {', '.join(available)}"
