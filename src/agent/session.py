@@ -3,8 +3,7 @@ import asyncio
 import json
 import shutil
 import uuid
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
-from aioconsole import ainput
+from typing import Any, Awaitable, Callable, Dict, List, Optional, TYPE_CHECKING
 
 from src.config.globle_define import *
 from src.utils import get_logger
@@ -14,9 +13,14 @@ if TYPE_CHECKING:
 
 logger = get_logger(__name__)
 
+# Channel 回调类型
+ReplyCallback    = Callable[[str], Awaitable[None]]          # Agent 最终回复
+ProgressCallback = Callable[[str, str], Awaitable[None]]     # (event, data) 过程事件
+
 
 class Session:
-    def __init__(self, workspace: Optional[Path] = None):
+    def __init__(self, workspace: Optional[Path] = None,
+                 reply_callback: Optional[ReplyCallback] = None):
         self.session_id = uuid.uuid4().hex[:8]
         self.workspace: Path = Path(workspace) if workspace else DEFAULT_WORKSPACE / self.session_id
         self.workspace.mkdir(parents=True, exist_ok=True)
@@ -24,6 +28,8 @@ class Session:
         self.user_inputs: asyncio.Queue[str] = asyncio.Queue()
         self.messages: List[Dict[str, str]] = []
         self._agent_loop: Optional["AgentLoop"] = None
+        self._reply_callback:    Optional[ReplyCallback]    = reply_callback
+        self._progress_callback: Optional[ProgressCallback] = None
         logger.info(f"Session [{self.session_id}] workspace: {self.workspace}")
 
     def _init_bot_dir(self) -> None:
@@ -42,22 +48,7 @@ class Session:
         return self._agent_loop
 
     async def start_agent_loop(self):
-        """启动会话"""
         await self.agent_loop.run()
-
-    async def start_input_loop(self):
-        """启动输入循环"""
-        while True:
-            # 使用 aioconsole 异步获取输入
-            try:
-                user_input = await ainput("You: ")
-            except (EOFError, KeyboardInterrupt):
-                break
-
-            if not user_input.strip():
-                continue
-
-            await self.push_user_input(user_input.strip())
 
     async def push_user_input(self, content: str) -> None:
         await self.user_inputs.put(content)
@@ -72,18 +63,21 @@ class Session:
                 break
         return "\n".join(items)
 
+    # ------------------------------------------------------------------ #
+    # 消息历史维护（不做任何输出，输出由 Channel 负责）
+    # ------------------------------------------------------------------ #
+
     async def add_user_input(self, content: str) -> None:
-        """添加用户输入"""
-        print(f"{USER} {content}")
         self.messages.append({"role": USER, "content": content})
 
     async def add_agent_response(self, content: str) -> None:
-        """添加 Agent 响应"""
+        """Agent 产生最终文字回复 → 写历史 + 触发 reply_callback"""
         self.messages.append({"role": ASSISTANT, "content": content})
-        print(f"{ASSISTANT} {content}")
+        if self._reply_callback:
+            await self._reply_callback(content)
 
     async def add_assistant_tool_calls(self, content: Optional[str], tool_calls: list) -> None:
-        """添加 assistant 的 tool_calls 消息（必须在 tool result 之前）"""
+        """写工具调用消息 → 写历史 + 触发 progress_callback"""
         msg: Dict[str, Any] = {"role": "assistant", "content": content or ""}
         msg["tool_calls"] = [
             {
@@ -94,22 +88,26 @@ class Session:
             for tc in tool_calls
         ]
         self.messages.append(msg)
+        if self._progress_callback:
+            names = ", ".join(tc.name for tc in tool_calls)
+            await self._progress_callback("tool_call", names)
 
     async def add_tool_result(self, tool_call_id: str, result: Dict[str, Any]) -> None:
-        """添加工具执行结果"""
+        """写工具结果 → 写历史 + 触发 progress_callback"""
         content = result.get("result", "") if isinstance(result, dict) else str(result)
         self.messages.append({
             "role": "tool",
             "tool_call_id": tool_call_id,
             "content": content
         })
-        print(f"[tool] {content}")
+        if self._progress_callback:
+            await self._progress_callback("tool_result", content)
 
     async def add_error(self, error_msg: str) -> None:
-        """添加错误信息（作为 assistant 消息呈现给用户）"""
+        """写错误消息 → 写历史 + 触发 progress_callback"""
         self.messages.append({"role": ASSISTANT, "content": f"Error: {error_msg}"})
-        print(f"{ASSISTANT} Error: {error_msg}")
+        if self._progress_callback:
+            await self._progress_callback("error", error_msg)
 
     def get_messages(self) -> List[Dict[str, str]]:
-        """获取所有消息"""
         return self.messages.copy()

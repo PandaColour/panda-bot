@@ -13,6 +13,7 @@ if sys.platform == "win32":
     sys.stderr.reconfigure(encoding="utf-8")
 
 from src.agent.session import Session
+from src.channel.manager import ChannelManager
 from src.config.config_manager import globe_config_manager
 from src.utils import get_logger, setup_logging
 
@@ -32,8 +33,9 @@ async def run_main_loop():
         workspace = None
 
     session = Session(workspace=workspace)
-    await asyncio.gather(session.start_input_loop(),
-                         session.start_agent_loop())
+    manager = ChannelManager(globe_config_manager)
+    manager.load_channels()
+    await manager.run(session)
 
 def main():
     setup_logging("DEBUG")

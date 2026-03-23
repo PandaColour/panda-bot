@@ -33,5 +33,19 @@
       },
       "enabled": true
     }
-  }
+  },
+  "channels": [
+    {
+      "type": "console",
+      "enabled": true
+    },
+    {
+      "type": "ilink",
+      "enabled": false,
+      "config": {
+        "credentials_file": "~/.panda-bot/ilink_credentials.json",
+        "state_file": "~/.panda-bot/ilink_state.json"
+      }
+    }
+  ]
 }
