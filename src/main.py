@@ -3,6 +3,7 @@ Panda Bot - 通用智能体
 
 入口文件
 """
+import asyncio
 import sys
 from pathlib import Path
 
@@ -56,5 +57,4 @@ def main():
 
 
 if __name__ == "__main__":
-    import asyncio
     main()

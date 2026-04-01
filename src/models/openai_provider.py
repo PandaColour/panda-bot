@@ -57,7 +57,7 @@ class OpenAIProvider(BaseProvider):
             )
             response.raise_for_status()
             result = response.json()
-            logger.debug("OpenAI API 调用成功")
+            logger.debug(f"OpenAI API 调用成功 {result}")
         except requests.RequestException as e:
             logger.error(f"OpenAI API RequestException: {str(e)}")
             raise

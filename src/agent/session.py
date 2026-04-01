@@ -5,7 +5,7 @@ import shutil
 import uuid
 from typing import Any, Awaitable, Callable, Dict, List, Optional, TYPE_CHECKING
 
-from src.config.globle_define import *
+from src.config.global_define import *
 from src.utils import get_logger
 
 if TYPE_CHECKING:
