@@ -114,7 +114,7 @@ class AnthropicProvider(BaseProvider):
             )
             response.raise_for_status()
             result = response.json()
-            logger.debug("Anthropic API 调用成功")
+            logger.debug(f"Anthropic API 调用成功 {result}")
         except requests.RequestException as e:
             logger.error(f"Anthropic API RequestException: {str(e)}")
             raise

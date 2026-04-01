@@ -1,14 +1,34 @@
 # panda-bot
-panda bot 是一个通用智能体
+Panda Bot 是一个通用智能体
 
-## 1️⃣ 我们目标
-* 不依赖复杂框架
-* 只有 python3 + bash
-* 可扩展工具,默认带有 playwright
-* 有状态机
-* 有验证层
-* 有失败恢复
-* 有最大步数防死循环
+## 快速开始
+
+### 环境要求
+- Python 3.11+
+- [uv](https://docs.astral.sh/uv/) 包管理器
+
+### 初始化
+
+```bash
+# 克隆项目
+git clone https://github.com/your-repo/panda-bot.git
+cd panda-bot
+
+# 创建虚拟环境并安装依赖
+uv .venv
+uv pip install -r requirements.txt
+
+# 运行
+uv run python src/main.py
+```
+
+### 配置
+
+编辑 `config.json` 配置 LLM 和 MCP 服务器。
+
+---
+
+## 架构设计
 
 ### 分层设计
 ```
@@ -17,7 +37,7 @@ panda bot 是一个通用智能体
 └─────────┬───────────┘
 ↓
 ┌─────────────────────┐
-│   Control Layer     │   ← 你真正要设计的核心
+│   Control Layer     │   ← 核心控制层
 │---------------------│
 │ State Machine       │
 │ Tool Router         │
@@ -36,71 +56,46 @@ panda bot 是一个通用智能体
 └─────────────────────┘
 ```
 
+### 目录结构
+```
+src/
+├── main.py              # 入口
+├── agent/               # Agent 核心
+│   ├── agent.py         # AgentLoop 状态机
+│   ├── session.py       # 会话管理
+│   ├── planner.py       # 任务规划
+│   ├── task.py          # 任务管理
+│   └── tools/           # 工具集
+├── channel/             # 交互渠道
+│   └── chat_window.py   # PySide6 GUI
+├── config/              # 配置管理
+└── utils/               # 工具函数
+```
+
 ---
 
-## 2️⃣ 控制层必须具备的能力
+## 控制层能力
 
 ### A. 状态机
-
-每次循环必须有状态：
 
 ```
 INIT → THINK → ACT → VALIDATE → DONE / ERROR
 ```
 
-不能只有 message loop。
+### B. 失败恢复
+- 自动重试（最多 N 次）
+- 超过阈值自动终止
+- 防止无限循环
 
----
-
-### B. 明确的 LLM 输出协议
-
-LLM 只能输出三种类型：
-
-```json
-{
-  "type": "final"
-}
-```
-```json
-{
-  "type": "tool",
-  "tool": "bash",
-  "input": "ls -la"
-}
-```
-```json
-{
-  "type": "think"
-}
-```
-
-不允许自由文本污染控制层。
-
----
-
-### C. 验证层（硬规则优先）
-
-验证顺序：
-
-1. exit code
-2. JSON schema
-3. 文件存在检查
-4. 再让 LLM 判断语义
-
----
-
-### D. 失败恢复
-
-* 自动重试（最多 N 次）
-* 超过阈值自动终止
-* 防止无限循环
-
----
-
-### E. 步数限制
+### C. 步数限制
 
 ```python
 MAX_STEPS = 30
 ```
 
-任何 Agent 没有这个都会炸。
+---
+
+## 技术栈
+- **GUI**: PySide6 + qasync (Qt + asyncio 共享事件循环)
+- **MCP**: 支持 Stdio 和 HTTP 两种连接方式
+- **异步**: asyncio

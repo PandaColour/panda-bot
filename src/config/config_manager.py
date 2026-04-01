@@ -1,6 +1,5 @@
 """配置管理模块"""
 import json
-from enum import global_enum
 from pathlib import Path
 from typing import Any, Dict, Optional
 
