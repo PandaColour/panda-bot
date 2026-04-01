@@ -1,5 +1,4 @@
-"""src/channel 包"""
-from .base import BaseChannel
-from .manager import ChannelManager
+"""Channel 模块"""
+from src.channel.chat_window import ChatWindow
 
-__all__ = ["BaseChannel", "ChannelManager"]
+__all__ = ["ChatWindow"]

@@ -12,7 +12,6 @@ from .tools import ToolRegistry, MCPManager
 from .tools.filesystem import ReadFileTool, WriteFileTool, EditFileTool, ListDirTool
 from .tools.shell import ExecTool
 from .tools.python3 import Python3Tool
-from .tools.planning import PlanTaskTool, FinishTaskTool
 from .tools.skill_reference import ReadReferenceTool
 from ..config.config_manager import globe_config_manager
 
@@ -57,7 +56,7 @@ class AgentLoop:
             WriteFileTool(workspace=ws),
             EditFileTool(workspace=ws),
             ListDirTool(workspace=ws),
-            PlanTaskTool(), FinishTaskTool(), ReadReferenceTool(skills_dir=ws / ".bot" / "skills"),
+            ReadReferenceTool(skills_dir=ws / ".bot" / "skills"),
         ]:
             self.tool_registry.register(tool)
         for mcp_tool in self.mcp_manager.get_tools():
@@ -117,11 +116,6 @@ class AgentLoop:
                         tool_call.name, tool_call.arguments
                     )
                     await self.session.add_tool_result(tool_call.id, result)
-
-                    if tool_call.name == FinishTaskTool.NAME:
-                        self.state = AgentState.DONE
-                        logger.info("任务完成")
-                        return
 
             logger.warning("超出最大步骤限制")
             self.state = AgentState.ERROR
